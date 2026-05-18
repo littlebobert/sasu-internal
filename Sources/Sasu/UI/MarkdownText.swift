@@ -40,7 +40,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     }
 
     private static func attributedMarkdown(for markdown: String) -> NSAttributedString {
-        let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+        let normalizedMarkdown = markdownWithSafeSoftBreaks(markdown)
         let attributedString: AttributedString
         do {
             attributedString = try AttributedString(
@@ -66,6 +66,73 @@ private struct MarkdownTextView: NSViewRepresentable {
         addDetectedLinks(to: result)
 
         return result
+    }
+
+    private static func markdownWithSafeSoftBreaks(_ markdown: String) -> String {
+        let lines = markdown
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .components(separatedBy: "\n")
+        guard lines.count > 1 else {
+            return markdown
+        }
+
+        var result = ""
+        var isInsideFence = false
+
+        for index in lines.indices {
+            let line = lines[index]
+            result += line
+
+            guard index < lines.index(before: lines.endIndex) else {
+                break
+            }
+
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            let nextLine = lines[lines.index(after: index)]
+            let trimmedNextLine = nextLine.trimmingCharacters(in: .whitespaces)
+
+            if isFenceDelimiter(trimmedLine) {
+                isInsideFence.toggle()
+                result += "\n"
+            } else if shouldPreserveLineBreak(
+                currentLine: trimmedLine,
+                nextLine: trimmedNextLine,
+                isInsideFence: isInsideFence
+            ) {
+                result += "\n"
+            } else {
+                result += " "
+            }
+        }
+
+        return result
+    }
+
+    private static func shouldPreserveLineBreak(
+        currentLine: String,
+        nextLine: String,
+        isInsideFence: Bool
+    ) -> Bool {
+        isInsideFence
+            || currentLine.isEmpty
+            || nextLine.isEmpty
+            || currentLine.hasSuffix("\\")
+            || currentLine.hasSuffix("  ")
+            || isMarkdownBlockBoundary(currentLine)
+            || isMarkdownBlockBoundary(nextLine)
+    }
+
+    private static func isFenceDelimiter(_ line: String) -> Bool {
+        line.hasPrefix("```") || line.hasPrefix("~~~")
+    }
+
+    private static func isMarkdownBlockBoundary(_ line: String) -> Bool {
+        line.hasPrefix("#")
+            || line.hasPrefix(">")
+            || line.hasPrefix("- ")
+            || line.hasPrefix("* ")
+            || line.hasPrefix("+ ")
+            || line.range(of: #"^\d+\.\s+"#, options: .regularExpression) != nil
     }
 
     private static var paragraphStyle: NSParagraphStyle {

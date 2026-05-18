@@ -35,7 +35,7 @@ final class AboutWindowController {
 
 private struct AboutView: View {
     private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.1"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.2"
     }
 
     private var appIcon: NSImage {

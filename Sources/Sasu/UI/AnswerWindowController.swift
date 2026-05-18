@@ -5,12 +5,14 @@ import SwiftUI
 final class AnswerWindowController {
     private var window: NSPanel?
 
-    func show(appModel: AppModel) {
+    func show(appModel: AppModel, activate: Bool = true) {
         if window == nil {
             window = makeWindow(appModel: appModel)
         }
 
         window?.level = .floating
+        guard activate else { return }
+
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }

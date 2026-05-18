@@ -84,6 +84,7 @@ final class AppModel: ObservableObject {
     private var windowsHiddenForHighlight: [NSWindow] = []
     private var hasPresentedScreenRecordingPrimer = false
     private var appActivationObserver: NSObjectProtocol?
+    private var attentionRequestID: Int?
 
     init(
         defaults: UserDefaults = .standard,
@@ -382,6 +383,7 @@ final class AppModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor in
+                self?.cancelUserAttentionRequestIfNeeded()
                 self?.restoreHighlightWindowsAfterUserReturn()
             }
         }
@@ -665,7 +667,6 @@ final class AppModel: ObservableObject {
                 )
             )
             statusMessage = "Answer ready."
-            requestUserAttentionIfNeeded()
             Self.logger.info("OpenAI answer ready. characters=\(result.answer.count), hasHighlight=\(actionSuggestion != nil)")
         } catch is CancellationError {
             statusMessage = "Request stopped."
@@ -681,7 +682,11 @@ final class AppModel: ObservableObject {
 
         isRequestInFlight = false
         currentRequestTask = nil
-        answerWindowController.show(appModel: self)
+        let shouldActivateAnswerWindow = NSApp.isActive
+        answerWindowController.show(appModel: self, activate: shouldActivateAnswerWindow)
+        if !shouldActivateAnswerWindow {
+            requestUserAttentionIfNeeded()
+        }
     }
 
     private func appendScreenshotMessage(for screenshot: ScreenshotPayload) {
@@ -724,7 +729,15 @@ final class AppModel: ObservableObject {
 
     private func requestUserAttentionIfNeeded() {
         guard !NSApp.isActive else { return }
-        NSApp.requestUserAttention(.informationalRequest)
+        cancelUserAttentionRequestIfNeeded()
+        attentionRequestID = NSApp.requestUserAttention(.criticalRequest)
+    }
+
+    private func cancelUserAttentionRequestIfNeeded() {
+        if let attentionRequestID {
+            NSApp.cancelUserAttentionRequest(attentionRequestID)
+            self.attentionRequestID = nil
+        }
     }
 
     private static func hideVisibleSasuWindowsForCapture() -> [NSWindow] {
