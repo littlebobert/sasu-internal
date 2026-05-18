@@ -3,12 +3,13 @@ import SwiftUI
 
 struct SettingsView: View {
     @EnvironmentObject private var appModel: AppModel
+    @FocusState private var isAPIKeyFieldFocused: Bool
+    @State private var hasEditedAPIKey = false
 
     var body: some View {
         ScrollView {
             HStack(alignment: .top, spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
-                    header
                     hotkeySection
                     apiKeySection
                     modelSection
@@ -23,11 +24,6 @@ struct SettingsView: View {
         }
     }
 
-    private var header: some View {
-        Text("Press \(appModel.hotkeyDescription) to capture your current screen, then type your question.")
-            .foregroundStyle(.secondary)
-    }
-
     private var apiKeySection: some View {
         GroupBox("OpenAI API Key") {
             VStack(alignment: .leading, spacing: 12) {
@@ -39,17 +35,24 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 }
 
-                SecureField("sk-...", text: $appModel.apiKeyInput)
+                SecureField(apiKeyPlaceholder, text: $appModel.apiKeyInput)
                     .textFieldStyle(.roundedBorder)
+                    .focused($isAPIKeyFieldFocused)
+                    .onChange(of: appModel.apiKeyInput) { newValue in
+                        hasEditedAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    }
 
                 HStack {
                     Button("Save Key") {
                         appModel.saveAPIKey()
+                        hasEditedAPIKey = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     }
                     .keyboardShortcut(.defaultAction)
+                    .disabled(!canSaveAPIKey)
 
-                    Button("Delete Key") {
+                    Button("Clear Key") {
                         appModel.deleteAPIKey()
+                        hasEditedAPIKey = false
                     }
                     .disabled(!appModel.hasStoredAPIKey)
                 }
@@ -58,8 +61,17 @@ struct SettingsView: View {
         }
     }
 
+    private var apiKeyPlaceholder: String {
+        appModel.storedAPIKeyPreview.isEmpty ? "sk-..." : appModel.storedAPIKeyPreview
+    }
+
+    private var canSaveAPIKey: Bool {
+        let hasKeyInput = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasKeyInput && (isAPIKeyFieldFocused || hasEditedAPIKey)
+    }
+
     private var modelSection: some View {
-        GroupBox("Model") {
+        GroupBox("AI Model") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("", selection: $appModel.selectedModelPresetID) {
                     ForEach(ModelPreset.all) { preset in
@@ -118,7 +130,7 @@ struct SettingsView: View {
         GroupBox("Capture") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
-                    Button("Capture Screen") {
+                    Button("Test Screen Capture") {
                         appModel.captureAndAsk()
                     }
                     .disabled(appModel.isRequestInFlight)
@@ -135,11 +147,13 @@ struct SettingsView: View {
 
                 Text(appModel.statusMessage)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
 
                 if let errorMessage = appModel.errorMessage {
                     Text(errorMessage)
                         .foregroundStyle(.red)
                         .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
 
                 HStack {
@@ -157,6 +171,7 @@ struct SettingsView: View {
                 Text("After changing Screen Recording permission, macOS usually requires quitting and reopening Sasu before capture works.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
         }

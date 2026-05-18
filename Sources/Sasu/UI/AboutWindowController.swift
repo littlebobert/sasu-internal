@@ -2,10 +2,13 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class AboutWindowController {
+final class AboutWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private var onClose: (() -> Void)?
 
-    func show() {
+    func show(onClose: @escaping () -> Void) {
+        self.onClose = onClose
+
         if window == nil {
             window = makeWindow()
         }
@@ -24,18 +27,22 @@ final class AboutWindowController {
         )
 
         window.title = "About Sasu"
-        window.level = .modalPanel
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.contentView = NSHostingView(rootView: AboutView())
 
         return window
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose?()
     }
 }
 
 private struct AboutView: View {
     private var version: String {
-        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.2"
+        Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.3"
     }
 
     private var appIcon: NSImage {

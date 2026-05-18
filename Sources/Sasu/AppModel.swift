@@ -8,6 +8,7 @@ final class AppModel: ObservableObject {
     private static let logger = Logger(subsystem: "dev.sasu.Sasu", category: "AppModel")
     @Published var apiKeyInput = ""
     @Published private(set) var hasStoredAPIKey = false
+    @Published private(set) var storedAPIKeyPreview = ""
     @Published var modelID: String {
         didSet { defaults.set(modelID, forKey: Self.modelIDKey) }
     }
@@ -61,6 +62,8 @@ final class AppModel: ObservableObject {
     private static let hotkeyModifiersKey = "hotkeyModifiers"
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
+    private static let settingsWindowPresentationID = "settings"
+    private static let aboutWindowPresentationID = "about"
     private static let retiredModelAliases = [
         "gpt-5.5-high-fast"
     ]
@@ -85,6 +88,7 @@ final class AppModel: ObservableObject {
     private var hasPresentedScreenRecordingPrimer = false
     private var appActivationObserver: NSObjectProtocol?
     private var attentionRequestID: Int?
+    private var standardWindowPresentationIDs = Set<String>()
 
     init(
         defaults: UserDefaults = .standard,
@@ -131,7 +135,7 @@ final class AppModel: ObservableObject {
             ? HotkeyConfiguration.defaultConfiguration.modifiers
             : savedHotkeyModifiers
         self.hotkeyDescription = hotkeyConfiguration.displayName
-        self.hasStoredAPIKey = keychain.hasAPIKey()
+        refreshStoredAPIKeyPreview()
         applySelectedModelPreset()
     }
 
@@ -154,7 +158,7 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 100_000_000)
             await MainActor.run {
                 if shouldShowSettings {
-                    settingsWindowController.show(appModel: self)
+                    self.showSettingsWindowWithStandardOrdering()
                 } else {
                     answerWindowController.show(appModel: self)
                 }
@@ -163,7 +167,7 @@ final class AppModel: ObservableObject {
     }
 
     func showSettingsWindow() {
-        settingsWindowController.show(appModel: self)
+        showSettingsWindowWithStandardOrdering()
         defaults.set(true, forKey: Self.shouldShowSettingsOnLaunchKey)
     }
 
@@ -171,7 +175,34 @@ final class AppModel: ObservableObject {
         if hasStoredAPIKey {
             answerWindowController.show(appModel: self)
         } else {
-            settingsWindowController.show(appModel: self)
+            showSettingsWindowWithStandardOrdering()
+        }
+    }
+
+    func beginAboutWindowPresentation() {
+        beginStandardWindowPresentation(Self.aboutWindowPresentationID)
+    }
+
+    func endAboutWindowPresentation() {
+        endStandardWindowPresentation(Self.aboutWindowPresentationID)
+    }
+
+    private func showSettingsWindowWithStandardOrdering() {
+        beginStandardWindowPresentation(Self.settingsWindowPresentationID)
+        settingsWindowController.show(appModel: self) { [weak self] in
+            self?.endStandardWindowPresentation(Self.settingsWindowPresentationID)
+        }
+    }
+
+    private func beginStandardWindowPresentation(_ identifier: String) {
+        standardWindowPresentationIDs.insert(identifier)
+        answerWindowController.setFloatingEnabled(false)
+    }
+
+    private func endStandardWindowPresentation(_ identifier: String) {
+        standardWindowPresentationIDs.remove(identifier)
+        if standardWindowPresentationIDs.isEmpty {
+            answerWindowController.setFloatingEnabled(true)
         }
     }
 
@@ -189,6 +220,7 @@ final class AppModel: ObservableObject {
         do {
             try keychain.saveAPIKey(trimmedKey)
             apiKeyInput = ""
+            storedAPIKeyPreview = Self.apiKeyPreview(for: trimmedKey)
             hasStoredAPIKey = true
             errorMessage = nil
             statusMessage = "OpenAI API key saved in Keychain."
@@ -201,11 +233,27 @@ final class AppModel: ObservableObject {
         do {
             try keychain.deleteAPIKey()
             hasStoredAPIKey = false
+            storedAPIKeyPreview = ""
             errorMessage = nil
-            statusMessage = "OpenAI API key removed."
+            statusMessage = "OpenAI API key cleared."
         } catch {
-            errorMessage = "Could not delete API key: \(error.localizedDescription)"
+            errorMessage = "Could not clear API key: \(error.localizedDescription)"
         }
+    }
+
+    private func refreshStoredAPIKeyPreview() {
+        guard let apiKey = try? keychain.readAPIKey(), !apiKey.isEmpty else {
+            hasStoredAPIKey = false
+            storedAPIKeyPreview = ""
+            return
+        }
+
+        hasStoredAPIKey = true
+        storedAPIKeyPreview = Self.apiKeyPreview(for: apiKey)
+    }
+
+    private static func apiKeyPreview(for apiKey: String) -> String {
+        "sk-...\(apiKey.suffix(4))"
     }
 
     func resetModelToDefault() {

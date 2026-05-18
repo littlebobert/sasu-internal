@@ -4,17 +4,23 @@ import SwiftUI
 @MainActor
 final class AnswerWindowController {
     private var window: NSPanel?
+    private var isFloatingEnabled = true
 
     func show(appModel: AppModel, activate: Bool = true) {
         if window == nil {
             window = makeWindow(appModel: appModel)
         }
 
-        window?.level = .floating
+        window?.level = currentWindowLevel
         guard activate else { return }
 
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func setFloatingEnabled(_ isEnabled: Bool) {
+        isFloatingEnabled = isEnabled
+        window?.level = currentWindowLevel
     }
 
     func hide() {
@@ -40,6 +46,10 @@ final class AnswerWindowController {
         )
 
         return panel
+    }
+
+    private var currentWindowLevel: NSWindow.Level {
+        isFloatingEnabled ? .floating : .normal
     }
 
     private func initialFrame() -> NSRect {

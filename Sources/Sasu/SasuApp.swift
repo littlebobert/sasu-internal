@@ -46,7 +46,10 @@ struct SasuApp: App {
         .commands {
             CommandGroup(replacing: .appInfo) {
                 Button("About Sasu") {
-                    aboutWindowController.show()
+                    appModel.beginAboutWindowPresentation()
+                    aboutWindowController.show {
+                        appModel.endAboutWindowPresentation()
+                    }
                 }
             }
 
