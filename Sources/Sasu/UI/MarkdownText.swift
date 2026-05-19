@@ -47,7 +47,7 @@ private struct MarkdownTextView: NSViewRepresentable {
         do {
             attributedString = try AttributedString(
                 markdown: normalizedMarkdown,
-                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
+                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
             )
         } catch {
             attributedString = AttributedString(normalizedMarkdown)
@@ -71,11 +71,17 @@ private struct MarkdownTextView: NSViewRepresentable {
     }
 
     private static func markdownWithSafeSoftBreaks(_ markdown: String) -> String {
-        let lines = markdown
+        let normalizedMarkdown = markdown
             .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(
+                of: #"(?<!\n)\n(?!\n)"#,
+                with: " ",
+                options: .regularExpression
+            )
+        let lines = normalizedMarkdown
             .components(separatedBy: "\n")
         guard lines.count > 1 else {
-            return markdown
+            return normalizedMarkdown
         }
 
         var result = ""
@@ -139,7 +145,8 @@ private struct MarkdownTextView: NSViewRepresentable {
 
     private static var paragraphStyle: NSParagraphStyle {
         let style = NSMutableParagraphStyle()
-        style.paragraphSpacing = 8
+        style.paragraphSpacing = 4
+        style.lineSpacing = 0
         style.lineBreakMode = .byWordWrapping
         return style
     }

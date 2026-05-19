@@ -2,10 +2,13 @@ import AppKit
 import SwiftUI
 
 @MainActor
-final class ScreenshotPreviewWindowController {
+final class ScreenshotPreviewWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
+    private var onClose: (() -> Void)?
 
-    func show(image: NSImage) {
+    func show(image: NSImage, onClose: @escaping () -> Void) {
+        self.onClose = onClose
+
         if window == nil {
             window = makeWindow(for: image)
         }
@@ -16,6 +19,10 @@ final class ScreenshotPreviewWindowController {
         window?.setFrame(initialFrame(for: image), display: true)
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        onClose?()
     }
 
     private func makeWindow(for image: NSImage) -> NSWindow {
@@ -29,6 +36,7 @@ final class ScreenshotPreviewWindowController {
         window.title = "Screenshot Preview"
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         window.isReleasedWhenClosed = false
+        window.delegate = self
         return window
     }
 

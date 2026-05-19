@@ -440,7 +440,10 @@ final class AppModel: ObservableObject {
             return
         }
 
-        screenshotPreviewWindowController.show(image: image)
+        screenshotPreviewWindowController.show(image: image) { [weak self] in
+            guard let self else { return }
+            answerWindowController.show(appModel: self, activate: true)
+        }
     }
 
     func showHighlight(_ highlightSuggestion: HighlightSuggestion? = nil) {
@@ -816,6 +819,10 @@ final class AppModel: ObservableObject {
     }
 
     private static func normalizedTranslationText(_ text: String) -> String {
+        normalizedAnswerText(text)
+    }
+
+    private static func normalizedAnswerText(_ text: String) -> String {
         TextSpacingRepair.repairMissingSpaces(
             in: text.trimmingCharacters(in: .whitespacesAndNewlines)
         )
@@ -876,9 +883,10 @@ final class AppModel: ObservableObject {
                 screenshot: screenshot
             )
             try Task.checkCancellation()
+            let answer = Self.normalizedAnswerText(result.answer)
 
             lastResponse = AssistantResponse(
-                text: result.answer,
+                text: answer,
                 prompt: prompt,
                 actionSuggestion: actionSuggestion
             )
@@ -887,12 +895,12 @@ final class AppModel: ObservableObject {
             transcriptMessages.append(
                 ChatTranscriptMessage(
                     role: .assistant,
-                    text: result.answer,
+                    text: answer,
                     actionSuggestion: actionSuggestion
                 )
             )
             statusMessage = "Answer ready."
-            Self.logger.info("OpenAI answer ready. characters=\(result.answer.count), hasHighlight=\(actionSuggestion != nil)")
+            Self.logger.info("OpenAI answer ready. characters=\(answer.count), hasHighlight=\(actionSuggestion != nil)")
         } catch is CancellationError {
             statusMessage = "Request stopped."
             errorMessage = nil
