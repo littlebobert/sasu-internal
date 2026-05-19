@@ -39,7 +39,20 @@ final class AppModel: ObservableObject {
             updateHotkeyRegistration()
         }
     }
+    @Published var translateClipboardHotkeyKeyCode: UInt32 {
+        didSet {
+            defaults.set(Int(translateClipboardHotkeyKeyCode), forKey: Self.translateClipboardHotkeyKeyCodeKey)
+            updateTranslateClipboardHotkeyRegistration()
+        }
+    }
+    @Published var translateClipboardHotkeyModifiers: UInt32 {
+        didSet {
+            defaults.set(Int(translateClipboardHotkeyModifiers), forKey: Self.translateClipboardHotkeyModifiersKey)
+            updateTranslateClipboardHotkeyRegistration()
+        }
+    }
     @Published private(set) var hotkeyDescription = HotkeyConfiguration.defaultConfiguration.displayName
+    @Published private(set) var translateClipboardHotkeyDescription = HotkeyConfiguration.defaultTranslateClipboardConfiguration.displayName
     @Published private(set) var statusMessage = "Add your OpenAI API key, then press the hotkey or use Capture Screen."
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
@@ -60,6 +73,8 @@ final class AppModel: ObservableObject {
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
     private static let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private static let hotkeyModifiersKey = "hotkeyModifiers"
+    private static let translateClipboardHotkeyKeyCodeKey = "translateClipboardHotkeyKeyCode"
+    private static let translateClipboardHotkeyModifiersKey = "translateClipboardHotkeyModifiers"
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
     private static let settingsWindowPresentationID = "settings"
@@ -73,11 +88,13 @@ final class AppModel: ObservableObject {
     private let screenshotService: ScreenshotService
     private let openAIClient: OpenAIClient
     private let highlightGroundingService: HighlightGroundingService
+    private let clipboardTextService: ClipboardTextService
     private let answerWindowController: AnswerWindowController
     private let settingsWindowController: SettingsWindowController
     private let screenshotPreviewWindowController: ScreenshotPreviewWindowController
     private let highlightOverlayController: HighlightOverlayController
     private var hotkeyManager: HotkeyManager?
+    private var translateClipboardHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
     private var highlightAutoHideTask: Task<Void, Never>?
@@ -95,13 +112,15 @@ final class AppModel: ObservableObject {
         keychain: KeychainService = KeychainService(),
         screenshotService: ScreenshotService = ScreenshotService(),
         openAIClient: OpenAIClient = OpenAIClient(),
-        highlightGroundingService: HighlightGroundingService = HighlightGroundingService()
+        highlightGroundingService: HighlightGroundingService = HighlightGroundingService(),
+        clipboardTextService: ClipboardTextService = ClipboardTextService()
     ) {
         self.defaults = defaults
         self.keychain = keychain
         self.screenshotService = screenshotService
         self.openAIClient = openAIClient
         self.highlightGroundingService = highlightGroundingService
+        self.clipboardTextService = clipboardTextService
         self.answerWindowController = AnswerWindowController()
         self.settingsWindowController = SettingsWindowController()
         self.screenshotPreviewWindowController = ScreenshotPreviewWindowController()
@@ -134,7 +153,16 @@ final class AppModel: ObservableObject {
         self.hotkeyModifiers = savedHotkeyModifiers == 0
             ? HotkeyConfiguration.defaultConfiguration.modifiers
             : savedHotkeyModifiers
+        let savedTranslateClipboardHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.translateClipboardHotkeyKeyCodeKey))
+        self.translateClipboardHotkeyKeyCode = savedTranslateClipboardHotkeyKeyCode == 0
+            ? HotkeyConfiguration.defaultTranslateClipboardConfiguration.keyCode
+            : savedTranslateClipboardHotkeyKeyCode
+        let savedTranslateClipboardHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateClipboardHotkeyModifiersKey))
+        self.translateClipboardHotkeyModifiers = savedTranslateClipboardHotkeyModifiers == 0
+            ? HotkeyConfiguration.defaultTranslateClipboardConfiguration.modifiers
+            : savedTranslateClipboardHotkeyModifiers
         self.hotkeyDescription = hotkeyConfiguration.displayName
+        self.translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
         refreshStoredAPIKeyPreview()
         applySelectedModelPreset()
     }
@@ -142,6 +170,9 @@ final class AppModel: ObservableObject {
     func start() {
         if hotkeyManager == nil {
             updateHotkeyRegistration()
+        }
+        if translateClipboardHotkeyManager == nil {
+            updateTranslateClipboardHotkeyRegistration()
         }
 
         registerAppActivationObserverIfNeeded()
@@ -300,11 +331,39 @@ final class AppModel: ObservableObject {
         statusMessage = "Hotkey reset to \(hotkeyDescription)."
     }
 
+    func setTranslateClipboardHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
+        if enabled {
+            translateClipboardHotkeyModifiers |= modifier
+        } else {
+            let updatedModifiers = translateClipboardHotkeyModifiers & ~modifier
+            guard updatedModifiers != 0 else {
+                errorMessage = "Choose at least one modifier for the Translate Clipboard hotkey."
+                return
+            }
+
+            translateClipboardHotkeyModifiers = updatedModifiers
+        }
+    }
+
+    func resetTranslateClipboardHotkeyToDefault() {
+        translateClipboardHotkeyKeyCode = HotkeyConfiguration.defaultTranslateClipboardConfiguration.keyCode
+        translateClipboardHotkeyModifiers = HotkeyConfiguration.defaultTranslateClipboardConfiguration.modifiers
+        statusMessage = "Translate Clipboard hotkey reset to \(translateClipboardHotkeyDescription)."
+    }
+
     func captureAndAsk() {
         guard !isRequestInFlight else { return }
 
         currentRequestTask = Task {
             await prepareScreenshotForQuery()
+        }
+    }
+
+    func translateClipboard() {
+        guard !isRequestInFlight else { return }
+
+        currentRequestTask = Task {
+            await runTranslateClipboard()
         }
     }
 
@@ -576,12 +635,19 @@ final class AppModel: ObservableObject {
         HotkeyConfiguration(keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers)
     }
 
+    private var translateClipboardHotkeyConfiguration: HotkeyConfiguration {
+        HotkeyConfiguration(
+            keyCode: translateClipboardHotkeyKeyCode,
+            modifiers: translateClipboardHotkeyModifiers
+        )
+    }
+
     private func updateHotkeyRegistration() {
         hotkeyManager?.unregister()
         hotkeyManager = nil
 
         hotkeyDescription = hotkeyConfiguration.displayName
-        let manager = HotkeyManager(configuration: hotkeyConfiguration) { [weak self] in
+        let manager = HotkeyManager(configuration: hotkeyConfiguration, identifier: 1) { [weak self] in
             Task { @MainActor in
                 self?.captureAndAsk()
             }
@@ -591,10 +657,32 @@ final class AppModel: ObservableObject {
             try manager.register()
             hotkeyManager = manager
             errorMessage = nil
-            statusMessage = "Ready. Press \(hotkeyDescription) or use Capture Screen."
+            statusMessage = "Ready. Press \(hotkeyDescription) to capture or \(translateClipboardHotkeyDescription) to translate clipboard."
         } catch {
             errorMessage = "Could not register \(hotkeyDescription): \(error.localizedDescription)"
             statusMessage = "Use Capture Screen from the app while the hotkey is unavailable."
+        }
+    }
+
+    private func updateTranslateClipboardHotkeyRegistration() {
+        translateClipboardHotkeyManager?.unregister()
+        translateClipboardHotkeyManager = nil
+
+        translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
+        let manager = HotkeyManager(configuration: translateClipboardHotkeyConfiguration, identifier: 2) { [weak self] in
+            Task { @MainActor in
+                self?.translateClipboard()
+            }
+        }
+
+        do {
+            try manager.register()
+            translateClipboardHotkeyManager = manager
+            errorMessage = nil
+            statusMessage = "Ready. Press \(hotkeyDescription) to capture or \(translateClipboardHotkeyDescription) to translate clipboard."
+        } catch {
+            errorMessage = "Could not register \(translateClipboardHotkeyDescription): \(error.localizedDescription)"
+            statusMessage = "Use Translate Clipboard from the app while the hotkey is unavailable."
         }
     }
 
@@ -642,6 +730,73 @@ final class AppModel: ObservableObject {
         isRequestInFlight = false
         currentRequestTask = nil
         answerWindowController.show(appModel: self)
+    }
+
+    private func runTranslateClipboard() async {
+        isRequestInFlight = true
+        errorMessage = nil
+        shouldOfferPermissionRelaunch = false
+        currentHighlightSuggestion = nil
+        hideHighlight()
+        statusMessage = "Reading clipboard..."
+        Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+
+        do {
+            try Task.checkCancellation()
+            let sourceText = try clipboardTextService.readText()
+            let conversationContext = transcriptContextForRequest()
+            transcriptMessages.append(ChatTranscriptMessage(role: .user, text: "Clipboard text: \(sourceText)"))
+
+            try Task.checkCancellation()
+            guard let apiKey = try keychain.readAPIKey(), !apiKey.isEmpty else {
+                throw AppError.missingAPIKey
+            }
+
+            statusMessage = "Translating clipboard..."
+            answerWindowController.show(appModel: self)
+            let answer = try await openAIClient.translateClipboardText(
+                apiKey: apiKey,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                serviceTier: serviceTier,
+                sourceText: sourceText,
+                conversationContext: conversationContext
+            )
+            try Task.checkCancellation()
+            let translation = "Translation: \(Self.normalizedTranslationText(answer))"
+
+            lastResponse = AssistantResponse(
+                text: translation,
+                prompt: "Translate clipboard",
+                actionSuggestion: nil
+            )
+            transcriptMessages.append(ChatTranscriptMessage(role: .assistant, text: translation))
+            statusMessage = "Clipboard translation ready."
+            Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count)")
+        } catch is CancellationError {
+            statusMessage = "Request stopped."
+            errorMessage = nil
+            Self.logger.info("Clipboard translation cancelled.")
+        } catch {
+            errorMessage = error.localizedDescription
+            transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
+            statusMessage = "Something went wrong."
+            Self.logger.error("Clipboard translation failed: \(error.localizedDescription, privacy: .public)")
+        }
+
+        isRequestInFlight = false
+        currentRequestTask = nil
+        let shouldActivateAnswerWindow = NSApp.isActive
+        answerWindowController.show(appModel: self, activate: shouldActivateAnswerWindow)
+        if !shouldActivateAnswerWindow {
+            requestUserAttentionIfNeeded()
+        }
+    }
+
+    private static func normalizedTranslationText(_ text: String) -> String {
+        TextSpacingRepair.repairMissingSpaces(
+            in: text.trimmingCharacters(in: .whitespacesAndNewlines)
+        )
     }
 
     private func runCapture(prompt: String, reuseLastScreenshot: Bool = false) async {

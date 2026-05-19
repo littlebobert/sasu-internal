@@ -43,6 +43,12 @@ struct AnswerPanelView: View {
                 .disabled(appModel.isRequestInFlight)
                 .fixedSize()
 
+                Button("Translate Clipboard") {
+                    appModel.translateClipboard()
+                }
+                .disabled(appModel.isRequestInFlight)
+                .fixedSize()
+
                 Button("Copy Answer") {
                     appModel.copyLastAnswerToPasteboard()
                 }
@@ -226,6 +232,9 @@ private struct TranscriptMessageView: View {
 
                     Spacer()
                 }
+            } else if let clipboardSourceText {
+                (Text("Clipboard text: ") + Text(clipboardSourceText))
+                    .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 MarkdownText(markdown: message.text)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -244,5 +253,14 @@ private struct TranscriptMessageView: View {
         case .error:
             return .red
         }
+    }
+
+    private var clipboardSourceText: String? {
+        let prefix = "Clipboard text: "
+        guard message.role == .user, message.text.hasPrefix(prefix) else {
+            return nil
+        }
+
+        return String(message.text.dropFirst(prefix.count))
     }
 }

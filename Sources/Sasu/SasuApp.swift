@@ -65,6 +65,11 @@ struct SasuApp: App {
                     appModel.captureAndAsk()
                 }
                 .keyboardShortcut("k", modifiers: [.command, .shift])
+
+                Button("Translate Clipboard") {
+                    appModel.translateClipboard()
+                }
+                .keyboardShortcut("j", modifiers: [.command, .shift])
             }
         }
     }

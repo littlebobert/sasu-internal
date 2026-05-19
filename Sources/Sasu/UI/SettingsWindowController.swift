@@ -27,9 +27,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     }
 
     private func makeWindow(appModel: AppModel) -> NSWindow {
+        let contentSize = initialContentSize()
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 520, height: 620),
-            styleMask: [.titled, .closable, .miniaturizable],
+            contentRect: NSRect(origin: .zero, size: contentSize),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable],
             backing: .buffered,
             defer: false
         )
@@ -41,9 +42,18 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window.contentView = NSHostingView(
             rootView: SettingsView()
                 .environmentObject(appModel)
-                .frame(width: 520, height: 620)
+                .frame(width: contentSize.width, height: contentSize.height)
         )
 
         return window
+    }
+
+    private func initialContentSize() -> NSSize {
+        let visibleFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
+            ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        let width = min(560, max(480, visibleFrame.width - 80))
+        let height = min(780, max(520, visibleFrame.height - 80))
+
+        return NSSize(width: width, height: height)
     }
 }

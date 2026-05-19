@@ -10,6 +10,11 @@ struct HotkeyConfiguration: Equatable {
         modifiers: UInt32(controlKey | optionKey)
     )
 
+    static let defaultTranslateClipboardConfiguration = HotkeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_J),
+        modifiers: UInt32(controlKey | optionKey)
+    )
+
     static let supportedKeys: [HotkeyKey] = [
         HotkeyKey(name: "Space", keyCode: UInt32(kVK_Space)),
         HotkeyKey(name: "Return", keyCode: UInt32(kVK_Return)),

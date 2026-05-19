@@ -8,19 +8,15 @@ struct SettingsView: View {
 
     var body: some View {
         ScrollView {
-            HStack(alignment: .top, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    hotkeySection
-                    apiKeySection
-                    modelSection
-                    captureSection
-                }
-                .frame(width: 480, alignment: .leading)
-                .padding(20)
-
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 14) {
+                hotkeySection
+                apiKeySection
+                modelSection
+                captureSection
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
         }
     }
 
@@ -59,6 +55,7 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var apiKeyPlaceholder: String {
@@ -83,44 +80,113 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var hotkeySection: some View {
-        GroupBox("Hotkey") {
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Current: \(appModel.hotkeyDescription)")
-                    .foregroundStyle(.secondary)
+        GroupBox("Hotkeys") {
+            VStack(alignment: .leading, spacing: 14) {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Capture Screen")
+                        .font(.caption.bold())
 
-                Picker("Key", selection: $appModel.hotkeyKeyCode) {
-                    ForEach(HotkeyConfiguration.supportedKeys) { key in
-                        Text(key.name).tag(key.keyCode)
+                    Text("Current: \(appModel.hotkeyDescription)")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Key", selection: $appModel.hotkeyKeyCode) {
+                        ForEach(HotkeyConfiguration.supportedKeys) { key in
+                            Text(key.name).tag(key.keyCode)
+                        }
+                    }
+                    .frame(maxWidth: 240)
+
+                    HStack {
+                        modifierToggle("Control", isEnabled: {
+                            appModel.hotkeyModifiers & UInt32(controlKey) != 0
+                        }, setEnabled: {
+                            appModel.setHotkeyModifier(UInt32(controlKey), enabled: $0)
+                        })
+                        modifierToggle("Option", isEnabled: {
+                            appModel.hotkeyModifiers & UInt32(optionKey) != 0
+                        }, setEnabled: {
+                            appModel.setHotkeyModifier(UInt32(optionKey), enabled: $0)
+                        })
+                        modifierToggle("Shift", isEnabled: {
+                            appModel.hotkeyModifiers & UInt32(shiftKey) != 0
+                        }, setEnabled: {
+                            appModel.setHotkeyModifier(UInt32(shiftKey), enabled: $0)
+                        })
+                        modifierToggle("Command", isEnabled: {
+                            appModel.hotkeyModifiers & UInt32(cmdKey) != 0
+                        }, setEnabled: {
+                            appModel.setHotkeyModifier(UInt32(cmdKey), enabled: $0)
+                        })
+                    }
+
+                    Button("Reset Capture Hotkey") {
+                        appModel.resetHotkeyToDefault()
                     }
                 }
-                .frame(maxWidth: 240)
 
-                HStack {
-                    modifierToggle("Control", UInt32(controlKey))
-                    modifierToggle("Option", UInt32(optionKey))
-                    modifierToggle("Shift", UInt32(shiftKey))
-                    modifierToggle("Command", UInt32(cmdKey))
-                }
+                Divider()
 
-                HStack {
-                    Button("Reset Hotkey") {
-                        appModel.resetHotkeyToDefault()
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Translate Clipboard")
+                        .font(.caption.bold())
+
+                    Text("Current: \(appModel.translateClipboardHotkeyDescription)")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Key", selection: $appModel.translateClipboardHotkeyKeyCode) {
+                        ForEach(HotkeyConfiguration.supportedKeys) { key in
+                            Text(key.name).tag(key.keyCode)
+                        }
+                    }
+                    .frame(maxWidth: 240)
+
+                    HStack {
+                        modifierToggle("Control", isEnabled: {
+                            appModel.translateClipboardHotkeyModifiers & UInt32(controlKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateClipboardHotkeyModifier(UInt32(controlKey), enabled: $0)
+                        })
+                        modifierToggle("Option", isEnabled: {
+                            appModel.translateClipboardHotkeyModifiers & UInt32(optionKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateClipboardHotkeyModifier(UInt32(optionKey), enabled: $0)
+                        })
+                        modifierToggle("Shift", isEnabled: {
+                            appModel.translateClipboardHotkeyModifiers & UInt32(shiftKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateClipboardHotkeyModifier(UInt32(shiftKey), enabled: $0)
+                        })
+                        modifierToggle("Command", isEnabled: {
+                            appModel.translateClipboardHotkeyModifiers & UInt32(cmdKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateClipboardHotkeyModifier(UInt32(cmdKey), enabled: $0)
+                        })
+                    }
+
+                    Button("Reset Translate Clipboard Hotkey") {
+                        appModel.resetTranslateClipboardHotkeyToDefault()
                     }
                 }
             }
             .padding(.vertical, 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func modifierToggle(_ title: String, _ modifier: UInt32) -> some View {
+    private func modifierToggle(
+        _ title: String,
+        isEnabled: @escaping () -> Bool,
+        setEnabled: @escaping (Bool) -> Void
+    ) -> some View {
         Toggle(
             title,
             isOn: Binding(
-                get: { appModel.hotkeyModifiers & modifier != 0 },
-                set: { appModel.setHotkeyModifier(modifier, enabled: $0) }
+                get: isEnabled,
+                set: setEnabled
             )
         )
         .toggleStyle(.checkbox)
@@ -175,5 +241,6 @@ struct SettingsView: View {
             }
             .padding(.vertical, 4)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

@@ -46,13 +46,59 @@ struct OpenAIClient {
             serviceTier: Self.serviceTierParameter(serviceTier)
         )
 
+        let text = try await sendResponsesRequest(
+            apiKey: apiKey,
+            requestBody: requestBody,
+            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))"
+        )
+
+        return Self.parseAssistantResult(from: text)
+    }
+
+    func translateClipboardText(
+        apiKey: String,
+        modelID: String,
+        reasoningEffort: String,
+        serviceTier: String,
+        sourceText: String,
+        conversationContext: String?
+    ) async throws -> String {
+        let requestBody = ResponsesRequest(
+            model: modelID,
+            input: [
+                ResponsesInput(
+                    role: "user",
+                    content: [
+                        .inputText(buildClipboardTranslationPrompt(
+                            sourceText: sourceText,
+                            conversationContext: conversationContext
+                        ))
+                    ]
+                )
+            ],
+            reasoning: Self.reasoningConfiguration(modelID: modelID, effort: reasoningEffort),
+            serviceTier: Self.serviceTierParameter(serviceTier)
+        )
+
+        return try await sendResponsesRequest(
+            apiKey: apiKey,
+            requestBody: requestBody,
+            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)"
+        )
+    }
+
+    private func sendResponsesRequest(
+        apiKey: String,
+        requestBody: ResponsesRequest,
+        logSummary: String
+    ) async throws -> String {
         var request = URLRequest(url: endpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
-        Self.logger.info("Sending OpenAI request. model=\(modelID, privacy: .public), reasoning=\(reasoningEffort, privacy: .public), serviceTier=\(serviceTier, privacy: .public), imageDetail=\(imageDetail, privacy: .public), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height)), bodyBytes=\(request.httpBody?.count ?? 0)")
+        Self.logger.info("Sending OpenAI request. \(logSummary, privacy: .public), bodyBytes=\(request.httpBody?.count ?? 0)")
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -91,7 +137,7 @@ struct OpenAIClient {
             throw OpenAIError.emptyOutput
         }
 
-        return Self.parseAssistantResult(from: text)
+        return text
     }
 
     private func buildPrompt(prompt: String, screenshot: ScreenshotPayload, conversationContext: String?) throws -> String {
@@ -153,6 +199,37 @@ struct OpenAIClient {
                     conversationContext,
                     "",
                     "Use this context to understand the user's overall goal and prior steps. The attached screenshot is the current screen and should be treated as the source of truth for what is visible now."
+                ],
+                at: 0
+            )
+        }
+
+        return parts.joined(separator: "\n")
+    }
+
+    private func buildClipboardTranslationPrompt(sourceText: String, conversationContext: String?) -> String {
+        var parts = [
+            "Task: translate clipboard text.",
+            "",
+            "Source text:",
+            sourceText,
+            "",
+            "Instructions:",
+            "- Translate the source text into natural English.",
+            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful.",
+            "- If the source text is already English, say that briefly and provide a concise summary instead.",
+            "- If this appears to be a chat message, include a one-sentence summary only when it adds useful context.",
+            "- Return clear Markdown only. Do not wrap the answer in JSON."
+        ]
+
+        if let conversationContext, !conversationContext.isEmpty {
+            parts.insert(
+                contentsOf: [
+                    "Conversation context so far:",
+                    conversationContext,
+                    "",
+                    "Use this only to resolve ambiguous references in the clipboard text.",
+                    ""
                 ],
                 at: 0
             )

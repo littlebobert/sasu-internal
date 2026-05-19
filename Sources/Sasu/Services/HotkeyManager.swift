@@ -4,6 +4,7 @@ import Foundation
 final class HotkeyManager {
     private let keyCode: UInt32
     private let modifiers: UInt32
+    private let identifier: UInt32
     private let handler: () -> Void
     private let signature = OSType(UInt32(ascii: "SASU"))
     private var hotKeyRef: EventHotKeyRef?
@@ -13,21 +14,24 @@ final class HotkeyManager {
         HotkeyManager(
             keyCode: UInt32(kVK_Space),
             modifiers: UInt32(controlKey | optionKey),
+            identifier: 1,
             handler: handler
         )
     }
 
-    convenience init(configuration: HotkeyConfiguration, handler: @escaping () -> Void) {
+    convenience init(configuration: HotkeyConfiguration, identifier: UInt32 = 1, handler: @escaping () -> Void) {
         self.init(
             keyCode: configuration.keyCode,
             modifiers: configuration.modifiers,
+            identifier: identifier,
             handler: handler
         )
     }
 
-    init(keyCode: UInt32, modifiers: UInt32, handler: @escaping () -> Void) {
+    init(keyCode: UInt32, modifiers: UInt32, identifier: UInt32 = 1, handler: @escaping () -> Void) {
         self.keyCode = keyCode
         self.modifiers = modifiers
+        self.identifier = identifier
         self.handler = handler
     }
 
@@ -39,9 +43,10 @@ final class HotkeyManager {
 
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
-            { _, _, userData in
+            { _, event, userData in
                 guard let userData else { return noErr }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
+                guard manager.handles(event: event) else { return noErr }
                 DispatchQueue.main.async {
                     manager.handler()
                 }
@@ -57,7 +62,7 @@ final class HotkeyManager {
             throw HotkeyError.registrationFailed(installStatus)
         }
 
-        let hotKeyID = EventHotKeyID(signature: signature, id: 1)
+        let hotKeyID = EventHotKeyID(signature: signature, id: identifier)
         let registerStatus = RegisterEventHotKey(
             keyCode,
             modifiers,
@@ -70,6 +75,25 @@ final class HotkeyManager {
         guard registerStatus == noErr else {
             throw HotkeyError.registrationFailed(registerStatus)
         }
+    }
+
+    private func handles(event: EventRef?) -> Bool {
+        guard let event else { return false }
+
+        var hotKeyID = EventHotKeyID()
+        let status = GetEventParameter(
+            event,
+            EventParamName(kEventParamDirectObject),
+            EventParamType(typeEventHotKeyID),
+            nil,
+            MemoryLayout<EventHotKeyID>.size,
+            nil,
+            &hotKeyID
+        )
+
+        return status == noErr &&
+            hotKeyID.signature == signature &&
+            hotKeyID.id == identifier
     }
 
     func unregister() {
