@@ -44,9 +44,9 @@ final class HotkeyManager {
         let installStatus = InstallEventHandler(
             GetApplicationEventTarget(),
             { _, event, userData in
-                guard let userData else { return noErr }
+                guard let userData else { return OSStatus(eventNotHandledErr) }
                 let manager = Unmanaged<HotkeyManager>.fromOpaque(userData).takeUnretainedValue()
-                guard manager.handles(event: event) else { return noErr }
+                guard manager.handles(event: event) else { return OSStatus(eventNotHandledErr) }
                 DispatchQueue.main.async {
                     manager.handler()
                 }

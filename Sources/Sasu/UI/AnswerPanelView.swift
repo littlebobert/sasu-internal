@@ -68,40 +68,45 @@ struct AnswerPanelView: View {
     @ViewBuilder
     private var answerBody: some View {
         if !appModel.transcriptMessages.isEmpty {
-            ScrollViewReader { proxy in
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        ForEach(appModel.transcriptMessages) { message in
-                            VStack(alignment: .leading, spacing: 12) {
-                                TranscriptMessageView(message: message)
-
-                                if let highlight = message.actionSuggestion {
-                                    highlightSummary(
-                                        highlight,
-                                        isCurrentSuggestion: highlight == appModel.currentHighlightSuggestion
+            GeometryReader { geometry in
+                ScrollViewReader { proxy in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 18) {
+                            ForEach(appModel.transcriptMessages) { message in
+                                VStack(alignment: .leading, spacing: 12) {
+                                    TranscriptMessageView(
+                                        message: message,
+                                        availableWidth: max(300, geometry.size.width - 32)
                                     )
+
+                                    if let highlight = message.actionSuggestion {
+                                        highlightSummary(
+                                            highlight,
+                                            isCurrentSuggestion: highlight == appModel.currentHighlightSuggestion
+                                        )
+                                    }
+                                }
+                                .id(message.id)
+                            }
+
+                            if appModel.shouldOfferPermissionRelaunch, appModel.errorMessage != nil {
+                                Button("Relaunch Sasu") {
+                                    appModel.relaunchSasu()
                                 }
                             }
-                            .id(message.id)
-                        }
 
-                        if appModel.shouldOfferPermissionRelaunch, appModel.errorMessage != nil {
-                            Button("Relaunch Sasu") {
-                                appModel.relaunchSasu()
-                            }
+                            Color.clear
+                                .frame(height: 1)
+                                .id("transcript-bottom")
                         }
-
-                        Color.clear
-                            .frame(height: 1)
-                            .id("transcript-bottom")
+                        .padding(.trailing, 8)
                     }
-                    .padding(.trailing, 8)
-                }
-                .onChange(of: appModel.transcriptMessages.count) { _ in
-                    scrollTranscriptToBottom(proxy)
-                }
-                .onChange(of: appModel.currentHighlightSuggestion) { _ in
-                    scrollTranscriptToBottom(proxy)
+                    .onChange(of: appModel.transcriptMessages.count) { _ in
+                        scrollTranscriptToBottom(proxy)
+                    }
+                    .onChange(of: appModel.currentHighlightSuggestion) { _ in
+                        scrollTranscriptToBottom(proxy)
+                    }
                 }
             }
         } else {
@@ -139,7 +144,7 @@ struct AnswerPanelView: View {
                     if appModel.isHighlightVisible {
                         appModel.hideHighlight()
                     } else {
-                        appModel.showHighlight()
+                        appModel.showHighlight(highlight)
                     }
                 }
                 .disabled(appModel.isRequestInFlight || !isCurrentSuggestion)
@@ -197,6 +202,7 @@ struct AnswerPanelView: View {
 private struct TranscriptMessageView: View {
     @EnvironmentObject private var appModel: AppModel
     let message: ChatTranscriptMessage
+    let availableWidth: CGFloat
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -237,7 +243,9 @@ private struct TranscriptMessageView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 MarkdownText(markdown: message.text)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: availableWidth, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 6)
             }
         }
     }

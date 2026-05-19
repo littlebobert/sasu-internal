@@ -98,6 +98,7 @@ final class AppModel: ObservableObject {
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
     private var highlightAutoHideTask: Task<Void, Never>?
+    private var highlightClickMonitorStartTask: Task<Void, Never>?
     private var highlightGlobalClickMonitor: Any?
     private var highlightLocalClickMonitor: Any?
     private var shouldRestoreAnswerWindowAfterHighlight = false
@@ -208,6 +209,10 @@ final class AppModel: ObservableObject {
         } else {
             showSettingsWindowWithStandardOrdering()
         }
+    }
+
+    func showTranscriptWindow() {
+        answerWindowController.show(appModel: self)
     }
 
     func beginAboutWindowPresentation() {
@@ -438,17 +443,32 @@ final class AppModel: ObservableObject {
         screenshotPreviewWindowController.show(image: image)
     }
 
-    func showHighlight() {
-        guard let currentHighlightSuggestion, let lastScreenshot else { return }
+    func showHighlight(_ highlightSuggestion: HighlightSuggestion? = nil) {
+        guard let highlight = highlightSuggestion ?? currentHighlightSuggestion, let lastScreenshot else { return }
+        currentHighlightSuggestion = highlight
         highlightAutoHideTask?.cancel()
-        windowsHiddenForHighlight = Self.hideVisibleSasuWindowsForCapture()
+        highlightClickMonitorStartTask?.cancel()
+        stopHighlightClickMonitoring()
         shouldRestoreAnswerWindowAfterHighlight = true
-        startHighlightClickMonitoring()
-        highlightOverlayController.show(
-            highlight: currentHighlightSuggestion,
-            screenshot: lastScreenshot
-        )
-        isHighlightVisible = true
+        highlightClickMonitorStartTask = Task { [weak self, highlight, lastScreenshot] in
+            await Task.yield()
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.windowsHiddenForHighlight = Self.hideVisibleSasuWindowsForCapture()
+                self.highlightOverlayController.show(
+                    highlight: highlight,
+                    screenshot: lastScreenshot
+                )
+                self.isHighlightVisible = true
+            }
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self?.isHighlightVisible == true else { return }
+                self?.startHighlightClickMonitoring()
+            }
+        }
         highlightAutoHideTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             guard !Task.isCancelled else { return }
@@ -464,6 +484,8 @@ final class AppModel: ObservableObject {
     ) {
         highlightAutoHideTask?.cancel()
         highlightAutoHideTask = nil
+        highlightClickMonitorStartTask?.cancel()
+        highlightClickMonitorStartTask = nil
         stopHighlightClickMonitoring()
         highlightOverlayController.hide()
         isHighlightVisible = false

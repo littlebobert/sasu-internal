@@ -61,6 +61,13 @@ struct SasuApp: App {
             }
 
             CommandMenu("Sasu") {
+                Button("Show Transcript") {
+                    appModel.showTranscriptWindow()
+                }
+                .keyboardShortcut("0", modifiers: [.command])
+
+                Divider()
+
                 Button("Capture Screen") {
                     appModel.captureAndAsk()
                 }

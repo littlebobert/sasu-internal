@@ -7,16 +7,18 @@ struct SettingsView: View {
     @State private var hasEditedAPIKey = false
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 14) {
-                hotkeySection
-                apiKeySection
-                modelSection
-                captureSection
+        GeometryReader { geometry in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    hotkeySection
+                    apiKeySection
+                    modelSection
+                    captureSection
+                }
+                .frame(width: max(0, geometry.size.width - 48), alignment: .leading)
+                .padding(.horizontal, 24)
+                .padding(.vertical, 20)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
         }
     }
 
@@ -54,6 +56,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -79,6 +82,7 @@ struct SettingsView: View {
                 .frame(maxWidth: 360)
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -173,6 +177,7 @@ struct SettingsView: View {
                 }
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -240,6 +245,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

@@ -35,9 +35,10 @@ final class AnswerWindowController {
             defer: false
         )
 
-        panel.title = "Sasu"
+        panel.title = "Transcript"
         panel.level = .floating
         panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
+        panel.isExcludedFromWindowsMenu = false
         panel.isReleasedWhenClosed = false
         panel.setFrameAutosaveName("SasuAnswerWindow")
         panel.contentView = NSHostingView(

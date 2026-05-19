@@ -267,6 +267,14 @@ private final class LinkTextView: NSTextView {
         return menu
     }
 
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        guard isPointInsideRenderedText(point) else {
+            return nil
+        }
+
+        return super.hitTest(point)
+    }
+
     @objc private func copyLink(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         NSPasteboard.general.clearContents()
@@ -296,6 +304,24 @@ private final class LinkTextView: NSTextView {
         } else {
             NSCursor.iBeam.set()
         }
+    }
+
+    private func isPointInsideRenderedText(_ point: NSPoint) -> Bool {
+        guard let layoutManager, let textContainer, let textStorage, textStorage.length > 0 else {
+            return false
+        }
+
+        textContainer.containerSize = NSSize(
+            width: bounds.width,
+            height: .greatestFiniteMagnitude
+        )
+        layoutManager.ensureLayout(for: textContainer)
+
+        let usedRect = layoutManager.usedRect(for: textContainer)
+        let hitRect = usedRect
+            .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
+            .insetBy(dx: -4, dy: -4)
+        return hitRect.contains(point)
     }
 
     private func linkURL(at event: NSEvent) -> URL? {
