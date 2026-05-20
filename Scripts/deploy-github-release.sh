@@ -67,6 +67,16 @@ if [[ ! -f "$LANDING_PAGE" ]]; then
   exit 1
 fi
 
+LANDING_REPO="$(git -C "$(dirname "$LANDING_PAGE")" rev-parse --show-toplevel)"
+LANDING_RELATIVE_PATH="$(
+  python3 - "$LANDING_REPO" "$LANDING_PAGE" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)"
+
 mkdir -p "$ROOT_DIR/Build"
 cd "$ROOT_DIR"
 git fetch --tags --quiet origin 2>/dev/null || true
@@ -141,15 +151,22 @@ Return JSON only with this exact shape:
 {{
   "title": "Sasu {version}",
   "summary": "One short sentence.",
-  "en": ["1-4 concise English bullet points"],
-  "ja": ["Japanese translations of the English bullet points"]
+  "en": ["1-3 concise English release-note sentences"],
+  "ja": ["Japanese translations of the English release-note sentences"]
 }}
 
 Guidelines:
 - Prefer user-visible behavior over implementation details.
-- Mention bug fixes plainly.
+- Ignore minor changes, tiny visual polish, release automation, version bumps, website copy, refactors, and internal cleanup.
+- Only include changes that users would reasonably notice or care about.
+- Mention meaningful bug fixes plainly.
 - Do not invent features that are not supported by the diff.
-- Keep each bullet under 120 characters if possible.
+- Write each English item as a complete sentence with no Markdown bullet marker.
+- Keep each item under 140 characters if possible.
+- Use the style of these examples:
+  Fixed transcript spacing so words no longer run together when answers contain line breaks.
+  When an answer finishes while Sasu is in the background, Sasu now bounces the Dock icon instead of bringing itself to the foreground.
+  Improved background answer handling so the transcript updates quietly until you switch back to Sasu.
 
 Changes:
 {release_context}
@@ -198,11 +215,8 @@ if not en:
 if len(ja) != len(en):
     ja = en
 
-markdown = ["## Changes", ""]
-markdown.extend(f"- {item}" for item in en)
-markdown.append("")
 with open(markdown_path, "w") as handle:
-    handle.write("\n".join(markdown))
+    handle.write("\n".join(en) + "\n")
 
 with open(pair_path, "w") as handle:
     json.dump({"en": en, "ja": ja}, handle, ensure_ascii=False)
@@ -288,6 +302,15 @@ gh release create "$TAG" "$release_zip" \
   --repo "$REPO" \
   --title "Sasu $VERSION" \
   --notes-file "$NOTES_MD"
+
+echo "Committing and pushing landing page..."
+if git -C "$LANDING_REPO" diff --quiet -- "$LANDING_RELATIVE_PATH"; then
+  echo "Landing page already up to date."
+else
+  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH"
+  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH"
+  git -C "$LANDING_REPO" push
+fi
 
 echo "Created GitHub release: $TAG"
 echo "Release artifact: $release_zip"

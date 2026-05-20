@@ -69,10 +69,7 @@ private struct AboutView: View {
                 .font(.callout)
                 .foregroundStyle(.secondary)
 
-            HStack(spacing: 4) {
-                Text("Created by")
-                Link("Justin Garcia", destination: URL(string: "https://littlebobert.github.io/")!)
-            }
+            Link("More Info", destination: URL(string: "http://sasu.jp/")!)
         }
         .padding(12)
         .frame(width: 300, height: 230)
