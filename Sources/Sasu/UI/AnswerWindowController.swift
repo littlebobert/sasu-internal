@@ -225,7 +225,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let width = min(max(screenFrame.width * 0.42, 560), 700)
         let height = min(max(screenFrame.height * 0.65, 520), 760)
-        let x = screenFrame.maxX - width - 24
+        let x = screenFrame.midX - width / 2
         let y = screenFrame.midY - height / 2
 
         return NSRect(x: x, y: y, width: width, height: height)
