@@ -65,6 +65,7 @@ private struct MappedHighlight {
     let label: String
     let shape: HighlightShape
     let rect: CGRect
+    let screenSize: CGSize
     let reason: String?
 
     init(suggestion: HighlightSuggestion, screenFrame: CGRect, screenshotSize: CGSize) {
@@ -72,6 +73,7 @@ private struct MappedHighlight {
         let scaleY = screenFrame.height / screenshotSize.height
         self.label = suggestion.label
         self.shape = suggestion.shape
+        self.screenSize = screenFrame.size
         self.rect = CGRect(
             x: suggestion.x * scaleX,
             y: suggestion.y * scaleY,
@@ -115,11 +117,29 @@ private struct HighlightOverlayView: View {
         Text(highlight.label)
             .font(.headline)
             .foregroundStyle(.white)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Color.blue)
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .position(x: highlight.rect.midX, y: max(24, highlight.rect.minY - 22))
+            .frame(maxWidth: max(120, highlight.screenSize.width - 32))
+            .position(labelPosition)
+    }
+
+    private var labelPosition: CGPoint {
+        let estimatedLabelWidth = min(max(CGFloat(highlight.label.count) * 10 + 20, 80), highlight.screenSize.width - 32)
+        let halfLabelWidth = estimatedLabelWidth / 2
+        let x = min(
+            max(highlight.rect.midX, halfLabelWidth + 16),
+            highlight.screenSize.width - halfLabelWidth - 16
+        )
+        let preferredY = highlight.rect.minY - 22
+        let y = preferredY >= 24
+            ? preferredY
+            : min(highlight.rect.maxY + 22, highlight.screenSize.height - 24)
+
+        return CGPoint(x: x, y: y)
     }
 }
 
