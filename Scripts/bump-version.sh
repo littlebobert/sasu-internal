@@ -7,12 +7,15 @@ PLIST="$ROOT_DIR/AppBundle/Info.plist"
 usage() {
   cat <<'EOF'
 Usage:
-  ./Scripts/bump-version.sh [new-version]
+  ./Scripts/bump-version.sh [new-version] [new-build]
 
-Without an argument, bumps the minor version and resets patch to 0.
+Without arguments, bumps the minor version, resets patch to 0, and increments
+CFBundleVersion. With a version argument, increments CFBundleVersion unless a
+new build number is also supplied.
 Examples:
-  0.1.5 -> 0.2.0
+  0.1.5 (1) -> 0.2.0 (2)
   ./Scripts/bump-version.sh 0.1.6
+  ./Scripts/bump-version.sh 0.1.6 7
 EOF
 }
 
@@ -22,6 +25,12 @@ if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
 fi
 
 current_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
+current_build="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$PLIST")"
+
+if [[ $# -gt 2 ]]; then
+  usage >&2
+  exit 1
+fi
 
 if [[ $# -gt 0 ]]; then
   new_version="${1#v}"
@@ -45,7 +54,29 @@ if [[ -z "$new_version" ]]; then
   exit 1
 fi
 
-/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $new_version" "$PLIST"
+if ! [[ "$current_build" =~ ^[0-9]+$ ]]; then
+  echo "error: cannot compare non-numeric CFBundleVersion: $current_build" >&2
+  exit 1
+fi
 
-echo "Bumped Sasu from $current_version to $new_version"
+if [[ $# -gt 1 ]]; then
+  new_build="$2"
+else
+  new_build="$((10#$current_build + 1))"
+fi
+
+if ! [[ "$new_build" =~ ^[0-9]+$ ]]; then
+  echo "error: CFBundleVersion must be numeric: $new_build" >&2
+  exit 1
+fi
+
+if (( 10#$new_build <= 10#$current_build )); then
+  echo "error: CFBundleVersion must increase from $current_build to a larger number." >&2
+  exit 1
+fi
+
+/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $new_version" "$PLIST"
+/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $new_build" "$PLIST"
+
+echo "Bumped Sasu from $current_version ($current_build) to $new_version ($new_build)"
 echo "Updated $PLIST"

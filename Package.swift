@@ -10,10 +10,19 @@ let package = Package(
     products: [
         .executable(name: "Sasu", targets: ["Sasu"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", from: "2.9.2")
+    ],
     targets: [
         .executableTarget(
             name: "Sasu",
-            path: "Sources/Sasu"
+            dependencies: [
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
+            path: "Sources/Sasu",
+            linkerSettings: [
+                .unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])
+            ]
         )
     ]
 )

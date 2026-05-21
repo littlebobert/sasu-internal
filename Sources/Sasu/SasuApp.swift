@@ -25,11 +25,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 struct SasuApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var appModel: AppModel
+    @StateObject private var autoUpdateService: AutoUpdateService
     private let aboutWindowController = AboutWindowController()
 
     init() {
         let appModel = AppModel()
         _appModel = StateObject(wrappedValue: appModel)
+        _autoUpdateService = StateObject(wrappedValue: AutoUpdateService())
         appDelegate.appModel = appModel
 
         Task { @MainActor in
@@ -51,6 +53,13 @@ struct SasuApp: App {
                         appModel.endAboutWindowPresentation()
                     }
                 }
+
+                Divider()
+
+                Button("Check for Updates…") {
+                    autoUpdateService.checkForUpdates()
+                }
+                .disabled(!autoUpdateService.canCheckForUpdates)
             }
 
             CommandGroup(replacing: .appSettings) {

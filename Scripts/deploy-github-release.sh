@@ -14,23 +14,43 @@ fi
 
 REPO="${GITHUB_REPO:-littlebobert/sasu}"
 VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/AppBundle/Info.plist")"
+BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/AppBundle/Info.plist")"
 TAG="${RELEASE_TAG:-$VERSION}"
 LANDING_PAGE="${LANDING_PAGE:-$ROOT_DIR/../littlebobert.github.io/sasu.html}"
+APPCAST_PATH="${APPCAST_PATH:-$(dirname "$LANDING_PAGE")/appcast.xml}"
+APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
+APPCAST_PRODUCT_LINK="${APPCAST_PRODUCT_LINK:-https://sasu.jp/}"
+SPARKLE_GENERATE_APPCAST="${SPARKLE_GENERATE_APPCAST:-$ROOT_DIR/.build/artifacts/sparkle/Sparkle/bin/generate_appcast}"
 OPENAI_MODEL="${OPENAI_MODEL:-gpt-5.5}"
 OPENAI_REASONING_EFFORT="${OPENAI_REASONING_EFFORT:-high}"
 NOTES_JSON="$ROOT_DIR/Build/release-notes-$VERSION.json"
 NOTES_MD="$ROOT_DIR/Build/release-notes-$VERSION.md"
 NOTES_PAIR_JSON="$ROOT_DIR/Build/release-notes-$VERSION-pair.json"
+APPCAST_WORK_DIR="$ROOT_DIR/Build/appcast"
+
+APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX%/}/"
 
 usage() {
   cat <<EOF
 Usage:
-  ./Scripts/deploy-github-release.sh
+  ./Scripts/deploy-github-release.sh [version]
+
+If version is passed, ./Scripts/bump-version.sh is run first to update
+AppBundle/Info.plist. Otherwise the current plist version is used.
 
 Environment:
   RELEASE_ENV_FILE            Optional env file to source. Default: $RELEASE_ENV_FILE
   GITHUB_REPO                 GitHub repo to create the release in. Default: $REPO
   LANDING_PAGE                Path to sasu.html. Default: $LANDING_PAGE
+  APPCAST_PATH                Path to appcast.xml. Default: $APPCAST_PATH
+  APPCAST_DOWNLOAD_URL_PREFIX Download URL prefix for appcast updates.
+                               Default: $APPCAST_DOWNLOAD_URL_PREFIX
+  APPCAST_PRODUCT_LINK        Product link in appcast. Default: $APPCAST_PRODUCT_LINK
+  SPARKLE_GENERATE_APPCAST    Path to Sparkle generate_appcast tool.
+                               Default: $SPARKLE_GENERATE_APPCAST
+  SPARKLE_ED_KEY_FILE         Optional private EdDSA key file for appcast signing.
+  SPARKLE_PRIVATE_ED_KEY      Optional private EdDSA key string for appcast signing.
+                               If neither is set, generate_appcast uses Keychain.
   OPENAI_API_KEY              Required. Used to generate release notes.
   OPENAI_MODEL                Default: $OPENAI_MODEL
   OPENAI_REASONING_EFFORT     Default: $OPENAI_REASONING_EFFORT
@@ -42,6 +62,24 @@ EOF
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+
+if [[ $# -gt 1 ]]; then
+  echo "error: unexpected arguments: $*" >&2
+  usage >&2
+  exit 1
+fi
+
+if [[ -n "${1:-}" ]]; then
+  "$ROOT_DIR/Scripts/bump-version.sh" "${1#v}"
+  VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/AppBundle/Info.plist")"
+  BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/AppBundle/Info.plist")"
+  TAG="${RELEASE_TAG:-$VERSION}"
+  NOTES_JSON="$ROOT_DIR/Build/release-notes-$VERSION.json"
+  NOTES_MD="$ROOT_DIR/Build/release-notes-$VERSION.md"
+  NOTES_PAIR_JSON="$ROOT_DIR/Build/release-notes-$VERSION-pair.json"
+  APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
+  APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX%/}/"
 fi
 
 require_command() {
@@ -57,6 +95,11 @@ require_command git
 require_command python3
 require_command xcrun
 
+if ! [[ "$BUILD_VERSION" =~ ^[0-9]+$ ]]; then
+  echo "error: CFBundleVersion must be numeric for Sparkle updates: $BUILD_VERSION" >&2
+  exit 1
+fi
+
 if [[ -z "${OPENAI_API_KEY:-}" ]]; then
   echo "error: OPENAI_API_KEY is required to generate release notes." >&2
   exit 1
@@ -67,9 +110,30 @@ if [[ ! -f "$LANDING_PAGE" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$SPARKLE_GENERATE_APPCAST" ]]; then
+  echo "error: Sparkle generate_appcast not found: $SPARKLE_GENERATE_APPCAST" >&2
+  echo "Run 'swift package resolve' and try again." >&2
+  exit 1
+fi
+
 LANDING_REPO="$(git -C "$(dirname "$LANDING_PAGE")" rev-parse --show-toplevel)"
+APPCAST_REPO="$(git -C "$(dirname "$APPCAST_PATH")" rev-parse --show-toplevel)"
+if [[ "$APPCAST_REPO" != "$LANDING_REPO" ]]; then
+  echo "error: APPCAST_PATH must live in the same git repo as LANDING_PAGE." >&2
+  echo "LANDING_PAGE repo: $LANDING_REPO" >&2
+  echo "APPCAST_PATH repo: $APPCAST_REPO" >&2
+  exit 1
+fi
 LANDING_RELATIVE_PATH="$(
   python3 - "$LANDING_REPO" "$LANDING_PAGE" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)"
+APPCAST_RELATIVE_PATH="$(
+  python3 - "$LANDING_REPO" "$APPCAST_PATH" <<'PY'
 import os
 import sys
 
@@ -262,9 +326,9 @@ items_html = "\n".join(
     for en, ja in zip(en_items, ja_items)
 )
 current_block = f"""      <h3
-        data-label-en="{version} (Current)"
-        data-label-ja="{version}（現在）"
-      >{version} (Current)</h3>
+        data-label-en="{version}"
+        data-label-ja="{version}"
+      >{version}</h3>
       <ul>
 {items_html}
       </ul>
@@ -275,12 +339,39 @@ existing_current_pattern = re.compile(
     r'\s*<h3\s+data-label-en="' + re.escape(version) + r'(?: \(Current\))?"\s+data-label-ja="' + re.escape(version) + r'(?:（現在）)?"\s*>.*?</h3>\s*<ul>.*?</ul>\s*',
     re.S,
 )
+release_notes_details_open = (
+    r'(<div class="sasu-section release-notes">\s*<details>\s*<summary[^>]*>.*?</summary>\s*)'
+)
+release_notes_legacy_open = (
+    r'(<h2 data-label-en="Release notes" data-label-ja="リリースノート">Release notes</h2>\s*'
+    r'<details>\s*<summary[^>]*>.*?</summary>\s*)'
+)
 if existing_current_pattern.search(text):
     text = existing_current_pattern.sub("\n" + current_block, text, count=1)
-else:
+elif re.search(release_notes_details_open, text, re.S):
     text = re.sub(
-        r'(<h2 data-label-en="Release notes" data-label-ja="リリースノート">Release notes</h2>\n\n)',
+        release_notes_details_open,
         r'\1' + current_block,
+        text,
+        count=1,
+        flags=re.S,
+    )
+elif re.search(release_notes_legacy_open, text, re.S):
+    text = re.sub(
+        release_notes_legacy_open,
+        r'\1' + current_block,
+        text,
+        count=1,
+        flags=re.S,
+    )
+else:
+    details_open = (
+        '<details>\n'
+        '        <summary data-label-en="Release notes" data-label-ja="リリースノート">Release notes</summary>\n\n'
+    )
+    text = re.sub(
+        r'(<div class="sasu-section release-notes">\s*\n)',
+        r'\1      ' + details_open + current_block + '      </details>\n',
         text,
         count=1,
     )
@@ -297,21 +388,51 @@ if [[ ! -f "$release_zip" ]]; then
   exit 1
 fi
 
+echo "Generating Sparkle appcast: $APPCAST_PATH"
+rm -rf "$APPCAST_WORK_DIR"
+mkdir -p "$APPCAST_WORK_DIR"
+cp "$release_zip" "$APPCAST_WORK_DIR/"
+cp "$NOTES_MD" "$APPCAST_WORK_DIR/$(basename "$release_zip" .zip).md"
+if [[ -f "$APPCAST_PATH" ]]; then
+  cp "$APPCAST_PATH" "$APPCAST_WORK_DIR/appcast.xml"
+fi
+
+appcast_args=(
+  --download-url-prefix "$APPCAST_DOWNLOAD_URL_PREFIX"
+  --embed-release-notes
+  --link "$APPCAST_PRODUCT_LINK"
+  --maximum-deltas 0
+  --versions "$BUILD_VERSION"
+  -o "$APPCAST_WORK_DIR/appcast.xml"
+)
+
+if [[ -n "${SPARKLE_PRIVATE_ED_KEY:-}" ]]; then
+  printf '%s' "$SPARKLE_PRIVATE_ED_KEY" | "$SPARKLE_GENERATE_APPCAST" "${appcast_args[@]}" --ed-key-file - "$APPCAST_WORK_DIR"
+elif [[ -n "${SPARKLE_ED_KEY_FILE:-}" ]]; then
+  "$SPARKLE_GENERATE_APPCAST" "${appcast_args[@]}" --ed-key-file "$SPARKLE_ED_KEY_FILE" "$APPCAST_WORK_DIR"
+else
+  "$SPARKLE_GENERATE_APPCAST" "${appcast_args[@]}" "$APPCAST_WORK_DIR"
+fi
+
+cp "$APPCAST_WORK_DIR/appcast.xml" "$APPCAST_PATH"
+
 echo "Creating GitHub release $TAG in $REPO..."
 gh release create "$TAG" "$release_zip" \
   --repo "$REPO" \
   --title "Sasu $VERSION" \
   --notes-file "$NOTES_MD"
 
-echo "Committing and pushing landing page..."
-if git -C "$LANDING_REPO" diff --quiet -- "$LANDING_RELATIVE_PATH"; then
-  echo "Landing page already up to date."
+echo "Committing and pushing landing page/appcast..."
+landing_changes="$(git -C "$LANDING_REPO" status --porcelain -- "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH")"
+if [[ -z "$landing_changes" ]]; then
+  echo "Landing page and appcast already up to date."
 else
-  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH"
-  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH"
+  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
+  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
   git -C "$LANDING_REPO" push
 fi
 
 echo "Created GitHub release: $TAG"
 echo "Release artifact: $release_zip"
+echo "Updated appcast: $APPCAST_PATH"
 echo "Updated landing page: $LANDING_PAGE"

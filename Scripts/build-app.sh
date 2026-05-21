@@ -8,6 +8,8 @@ APP_DIR="$ROOT_DIR/Build/$APP_NAME.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
+FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
+SPARKLE_FRAMEWORK="$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 
 cd "$ROOT_DIR"
@@ -15,7 +17,7 @@ cd "$ROOT_DIR"
 swift build -c "$CONFIGURATION"
 
 rm -rf "$APP_DIR"
-mkdir -p "$MACOS_DIR" "$RESOURCES_DIR"
+mkdir -p "$MACOS_DIR" "$RESOURCES_DIR" "$FRAMEWORKS_DIR"
 
 cp "$ROOT_DIR/AppBundle/Info.plist" "$CONTENTS_DIR/Info.plist"
 if [[ -d "$ROOT_DIR/AppBundle/Resources" ]]; then
@@ -23,6 +25,12 @@ if [[ -d "$ROOT_DIR/AppBundle/Resources" ]]; then
 fi
 cp "$ROOT_DIR/.build/$CONFIGURATION/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
+if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then
+  echo "error: Sparkle framework not found at $SPARKLE_FRAMEWORK" >&2
+  echo "Run 'swift package resolve' and try again." >&2
+  exit 1
+fi
+ditto "$SPARKLE_FRAMEWORK" "$FRAMEWORKS_DIR/Sparkle.framework"
 printf "APPL????" > "$CONTENTS_DIR/PkgInfo"
 
 if [[ -z "$CODESIGN_IDENTITY" ]]; then
@@ -46,6 +54,7 @@ if [[ -n "$CODESIGN_IDENTITY" ]]; then
     codesign_args+=(--options runtime --timestamp)
   fi
 
+  codesign "${codesign_args[@]}" "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
   codesign "${codesign_args[@]}" "$APP_DIR" >/dev/null
   echo "Signed with: $CODESIGN_IDENTITY"
 else
@@ -55,6 +64,7 @@ else
     exit 1
   fi
 
+  codesign --force --deep --sign - "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
   codesign --force --deep --sign - "$APP_DIR" >/dev/null
   echo "Signed ad-hoc. Screen Recording permission may need to be reset after each rebuild."
 fi

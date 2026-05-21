@@ -7,9 +7,17 @@ struct HighlightGroundingService {
         _ suggestion: HighlightSuggestion,
         in screenshot: ScreenshotPayload
     ) async -> HighlightSuggestion {
-        let targetText = (suggestion.exactText ?? suggestion.label)
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !targetText.isEmpty else { return suggestion }
+        guard let exactText = suggestion.exactText?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+            !exactText.isEmpty
+        else {
+            // Icon-only and other non-text targets rely on model coordinates only.
+            // Do not OCR-match against the descriptive label (e.g. "Back arrow"),
+            // which can snap the highlight onto unrelated page text.
+            return suggestion
+        }
+
+        let targetText = exactText
 
         do {
             let uploadImage = try screenshot.uploadImage

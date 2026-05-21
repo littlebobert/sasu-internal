@@ -173,7 +173,9 @@ struct OpenAIClient {
 
             The actionSuggestion is optional. Include it only when the user is asking where to click, what to do next, how to fill something out, or how to navigate a visible UI. Use uploaded image pixel coordinates from the top-left corner. Prefer forgiving rectangles around a target, not tiny click points. If no visual target is useful, set actionSuggestion to null.
 
-            For actionSuggestion.exactText, copy the exact visible on-screen text that identifies the target, in the original UI language, such as `ネームサーバー/DNS`. Use null if the target has no visible text. This text is used for local OCR grounding, so do not translate, paraphrase, or describe it.
+            For actionSuggestion.exactText, copy the exact visible on-screen text that identifies the target, in the original UI language, such as `ネームサーバー/DNS`. Use null if the target has no visible text (icon-only buttons, toolbar glyphs, etc.). This text is used for local OCR grounding, so do not translate, paraphrase, or describe it. Never put the descriptive label (such as "Back arrow") in exactText.
+
+            For icon-only targets (exactText is null), place the rectangle tightly around the specific icon only. In toolbars with multiple similar icons, use nearby labeled controls as anchors and double-check you selected the correct icon. Prefer shape "circle" for compact icon buttons. Put disambiguation details in reason when needed.
 
             Language behavior:
             - Answer in the same language as the user's request unless the user asks otherwise.
