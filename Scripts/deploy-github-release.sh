@@ -33,10 +33,19 @@ APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX%/}/"
 usage() {
   cat <<EOF
 Usage:
-  ./Scripts/deploy-github-release.sh [version]
+  ./Scripts/deploy-github-release.sh [version] [--notes TEXT] [--notes-file PATH]
 
-If version is passed, ./Scripts/bump-version.sh is run first to update
-AppBundle/Info.plist. Otherwise the current plist version is used.
+If version is passed, ./Scripts/bump-version.sh is run for that version.
+Otherwise the patch version is bumped automatically (for example, 0.1.6 -> 0.1.7).
+
+With --notes or --notes-file, the provided English release notes are used
+as-is and only translated to Japanese (no diff-based note generation).
+Repeat --notes for multiple bullets, or put one bullet per line in a file.
+
+Examples:
+  ./Scripts/deploy-github-release.sh --notes "Added automatic updates."
+  ./Scripts/deploy-github-release.sh 0.1.7 --notes "Added automatic updates."
+  ./Scripts/deploy-github-release.sh --notes-file Build/release-notes.txt
 
 Environment:
   RELEASE_ENV_FILE            Optional env file to source. Default: $RELEASE_ENV_FILE
@@ -51,7 +60,7 @@ Environment:
   SPARKLE_ED_KEY_FILE         Optional private EdDSA key file for appcast signing.
   SPARKLE_PRIVATE_ED_KEY      Optional private EdDSA key string for appcast signing.
                                If neither is set, generate_appcast uses Keychain.
-  OPENAI_API_KEY              Required. Used to generate release notes.
+  OPENAI_API_KEY              Required. Used to generate or translate release notes.
   OPENAI_MODEL                Default: $OPENAI_MODEL
   OPENAI_REASONING_EFFORT     Default: $OPENAI_REASONING_EFFORT
   NOTARY_PROFILE              Passed through to Scripts/notarize-app.sh. Default there: sasu-notary
@@ -59,27 +68,75 @@ Environment:
 EOF
 }
 
-if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
-  usage
-  exit 0
+VERSION_ARG=""
+CUSTOM_NOTES=()
+CUSTOM_NOTES_FILE=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    --notes)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "error: --notes requires a value." >&2
+        exit 1
+      fi
+      CUSTOM_NOTES+=("$1")
+      shift
+      ;;
+    --notes-file)
+      shift
+      if [[ $# -eq 0 ]]; then
+        echo "error: --notes-file requires a path." >&2
+        exit 1
+      fi
+      CUSTOM_NOTES_FILE="$1"
+      shift
+      ;;
+    -*)
+      echo "error: unknown option: $1" >&2
+      usage >&2
+      exit 1
+      ;;
+    *)
+      if [[ -n "$VERSION_ARG" ]]; then
+        echo "error: unexpected argument: $1" >&2
+        usage >&2
+        exit 1
+      fi
+      VERSION_ARG="$1"
+      shift
+      ;;
+  esac
+done
+
+if [[ -n "$VERSION_ARG" ]]; then
+  "$ROOT_DIR/Scripts/bump-version.sh" "${VERSION_ARG#v}"
+else
+  "$ROOT_DIR/Scripts/bump-version.sh" --patch
 fi
 
-if [[ $# -gt 1 ]]; then
-  echo "error: unexpected arguments: $*" >&2
-  usage >&2
-  exit 1
-fi
+VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/AppBundle/Info.plist")"
+BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/AppBundle/Info.plist")"
+TAG="${RELEASE_TAG:-$VERSION}"
+NOTES_JSON="$ROOT_DIR/Build/release-notes-$VERSION.json"
+NOTES_MD="$ROOT_DIR/Build/release-notes-$VERSION.md"
+NOTES_PAIR_JSON="$ROOT_DIR/Build/release-notes-$VERSION-pair.json"
+APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
+APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX%/}/"
 
-if [[ -n "${1:-}" ]]; then
-  "$ROOT_DIR/Scripts/bump-version.sh" "${1#v}"
-  VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT_DIR/AppBundle/Info.plist")"
-  BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/AppBundle/Info.plist")"
-  TAG="${RELEASE_TAG:-$VERSION}"
-  NOTES_JSON="$ROOT_DIR/Build/release-notes-$VERSION.json"
-  NOTES_MD="$ROOT_DIR/Build/release-notes-$VERSION.md"
-  NOTES_PAIR_JSON="$ROOT_DIR/Build/release-notes-$VERSION-pair.json"
-  APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
-  APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX%/}/"
+USE_CUSTOM_NOTES=false
+if [[ -n "$CUSTOM_NOTES_FILE" ]]; then
+  if [[ ! -f "$CUSTOM_NOTES_FILE" ]]; then
+    echo "error: release notes file not found: $CUSTOM_NOTES_FILE" >&2
+    exit 1
+  fi
+  USE_CUSTOM_NOTES=true
+elif [[ ${#CUSTOM_NOTES[@]} -gt 0 ]]; then
+  USE_CUSTOM_NOTES=true
 fi
 
 require_command() {
@@ -143,63 +200,128 @@ PY
 
 mkdir -p "$ROOT_DIR/Build"
 cd "$ROOT_DIR"
-git fetch --tags --quiet origin 2>/dev/null || true
 
-last_release_tag="$(
-  gh release list \
-    --repo "$REPO" \
-    --limit 20 \
-    --json tagName,isDraft \
-    --jq '[.[] | select(.isDraft == false) | .tagName | select(. != "'"$TAG"'")] | .[0] // ""'
-)"
+if [[ "$USE_CUSTOM_NOTES" == true ]]; then
+  echo "Translating provided release notes with $OPENAI_MODEL ($OPENAI_REASONING_EFFORT reasoning)..."
 
-if [[ -n "$last_release_tag" ]] && git rev-parse --verify --quiet "$last_release_tag^{commit}" >/dev/null; then
-  compare_range="$last_release_tag..HEAD"
-  comparison_label="$last_release_tag to $TAG"
-  release_context="$(
-    {
-      echo "Comparison: $comparison_label"
-      echo
-      echo "Commit log:"
-      git log --oneline "$compare_range"
-      echo
-      echo "Diff stat:"
-      git diff --stat "$compare_range"
-      echo
-      echo "Diff:"
-      git diff --no-ext-diff --unified=2 "$compare_range" -- \
-        ':!Build/**' \
-        ':!.build/**'
-    } || true
-  )"
+  python3 - "$OPENAI_MODEL" "$OPENAI_REASONING_EFFORT" "$VERSION" "$CUSTOM_NOTES_FILE" ${CUSTOM_NOTES[@]+"${CUSTOM_NOTES[@]}"} <<'PY' \
+    | curl -sS https://api.openai.com/v1/responses \
+        -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d @- > "$NOTES_JSON"
+import json
+import sys
+
+model = sys.argv[1]
+reasoning_effort = sys.argv[2]
+version = sys.argv[3]
+notes_file = sys.argv[4] or ""
+inline_notes = [note.strip() for note in sys.argv[5:] if note.strip()]
+
+if notes_file:
+    with open(notes_file) as handle:
+        english_notes = [line.strip() for line in handle.readlines() if line.strip()]
+else:
+    english_notes = inline_notes
+
+if not english_notes:
+    raise SystemExit("No release notes provided.")
+
+english_json = json.dumps(english_notes, ensure_ascii=False)
+prompt = f"""
+Translate these English release notes for Sasu {version} into Japanese.
+
+Return JSON only with this exact shape:
+{{
+  "title": "Sasu {version}",
+  "summary": "One short sentence.",
+  "en": ["same English items, unchanged"],
+  "ja": ["Japanese translations of the English items"]
+}}
+
+Guidelines:
+- Keep the same number of items as the English list.
+- Copy each English item exactly into the "en" array. Do not rewrite, merge, or add items.
+- Provide natural Japanese translations in the "ja" array, one per English item.
+- Write each item as a complete sentence with no Markdown bullet marker.
+- Keep each item under 140 characters if possible.
+
+English release notes:
+{english_json}
+""".strip()
+
+body = {
+    "model": model,
+    "input": [
+        {
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": prompt}
+            ],
+        }
+    ],
+    "reasoning": {"effort": reasoning_effort},
+}
+print(json.dumps(body))
+PY
 else
-  comparison_label="working tree to $TAG"
-  release_context="$(
-    {
-      echo "Comparison: $comparison_label"
-      echo
-      echo "Recent commits:"
-      git log --oneline -20
-      echo
-      echo "Working tree diff stat:"
-      git diff --stat
-      echo
-      echo "Working tree diff:"
-      git diff --no-ext-diff --unified=2 -- \
-        ':!Build/**' \
-        ':!.build/**'
-    } || true
+  git fetch --tags --quiet origin 2>/dev/null || true
+
+  last_release_tag="$(
+    gh release list \
+      --repo "$REPO" \
+      --limit 20 \
+      --json tagName,isDraft \
+      --jq '[.[] | select(.isDraft == false) | .tagName | select(. != "'"$TAG"'")] | .[0] // ""'
   )"
-fi
-release_context="${release_context:0:60000}"
 
-echo "Generating release notes with $OPENAI_MODEL ($OPENAI_REASONING_EFFORT reasoning)..."
+  if [[ -n "$last_release_tag" ]] && git rev-parse --verify --quiet "$last_release_tag^{commit}" >/dev/null; then
+    compare_range="$last_release_tag..HEAD"
+    comparison_label="$last_release_tag to $TAG"
+    release_context="$(
+      {
+        echo "Comparison: $comparison_label"
+        echo
+        echo "Commit log:"
+        git log --oneline "$compare_range"
+        echo
+        echo "Diff stat:"
+        git diff --stat "$compare_range"
+        echo
+        echo "Diff:"
+        git diff --no-ext-diff --unified=2 "$compare_range" -- \
+          ':!Build/**' \
+          ':!.build/**'
+      } || true
+    )"
+  else
+    comparison_label="working tree to $TAG"
+    release_context="$(
+      {
+        echo "Comparison: $comparison_label"
+        echo
+        echo "Recent commits:"
+        git log --oneline -20
+        echo
+        echo "Working tree diff stat:"
+        git diff --stat
+        echo
+        echo "Working tree diff:"
+        git diff --no-ext-diff --unified=2 -- \
+          ':!Build/**' \
+          ':!.build/**'
+      } || true
+    )"
+  fi
+  release_context="${release_context:0:60000}"
 
-python3 - "$OPENAI_MODEL" "$OPENAI_REASONING_EFFORT" "$VERSION" "$comparison_label" "$release_context" <<'PY' \
-  | curl -sS https://api.openai.com/v1/responses \
-      -H "Authorization: Bearer ${OPENAI_API_KEY}" \
-      -H "Content-Type: application/json" \
-      -d @- > "$NOTES_JSON"
+  echo "Generating release notes with $OPENAI_MODEL ($OPENAI_REASONING_EFFORT reasoning)..."
+
+  python3 - "$OPENAI_MODEL" "$OPENAI_REASONING_EFFORT" "$VERSION" "$comparison_label" "$release_context" <<'PY' \
+    | curl -sS https://api.openai.com/v1/responses \
+        -H "Authorization: Bearer ${OPENAI_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d @- > "$NOTES_JSON"
 import json
 import sys
 
@@ -250,6 +372,7 @@ body = {
 }
 print(json.dumps(body))
 PY
+fi
 
 python3 - "$NOTES_JSON" "$NOTES_MD" "$NOTES_PAIR_JSON" <<'PY'
 import json
@@ -285,6 +408,33 @@ with open(markdown_path, "w") as handle:
 with open(pair_path, "w") as handle:
     json.dump({"en": en, "ja": ja}, handle, ensure_ascii=False)
 PY
+
+if [[ "$USE_CUSTOM_NOTES" == true ]]; then
+  python3 - "$NOTES_PAIR_JSON" "$NOTES_MD" "$CUSTOM_NOTES_FILE" ${CUSTOM_NOTES[@]+"${CUSTOM_NOTES[@]}"} <<'PY'
+import json
+import sys
+
+pair_path, markdown_path, notes_file = sys.argv[1:4]
+inline_notes = [note.strip() for note in sys.argv[4:] if note.strip()]
+
+if notes_file:
+    english_notes = [line.strip() for line in open(notes_file) if line.strip()]
+else:
+    english_notes = inline_notes
+
+data = json.load(open(pair_path))
+japanese_notes = data.get("ja") or []
+if len(japanese_notes) < len(english_notes):
+    japanese_notes.extend(english_notes[len(japanese_notes):])
+japanese_notes = japanese_notes[: len(english_notes)]
+
+with open(pair_path, "w") as handle:
+    json.dump({"en": english_notes, "ja": japanese_notes}, handle, ensure_ascii=False)
+
+with open(markdown_path, "w") as handle:
+    handle.write("\n".join(english_notes) + "\n")
+PY
+fi
 
 notes_pair_json="$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).read_text())' "$NOTES_PAIR_JSON")"
 

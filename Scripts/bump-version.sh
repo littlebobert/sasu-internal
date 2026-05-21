@@ -7,13 +7,15 @@ PLIST="$ROOT_DIR/AppBundle/Info.plist"
 usage() {
   cat <<'EOF'
 Usage:
-  ./Scripts/bump-version.sh [new-version] [new-build]
+  ./Scripts/bump-version.sh [--patch] [new-version] [new-build]
 
 Without arguments, bumps the minor version, resets patch to 0, and increments
-CFBundleVersion. With a version argument, increments CFBundleVersion unless a
-new build number is also supplied.
+CFBundleVersion. With --patch, bumps the patch version (0.1.6 -> 0.1.7).
+With a version argument, increments CFBundleVersion unless a new build number
+is also supplied.
 Examples:
   0.1.5 (1) -> 0.2.0 (2)
+  0.1.6 (2) -> 0.1.7 (3) via --patch
   ./Scripts/bump-version.sh 0.1.6
   ./Scripts/bump-version.sh 0.1.6 7
 EOF
@@ -22,6 +24,12 @@ EOF
 if [[ "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
   usage
   exit 0
+fi
+
+PATCH_BUMP=false
+if [[ "${1:-}" == "--patch" ]]; then
+  PATCH_BUMP=true
+  shift
 fi
 
 current_version="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIST")"
@@ -34,6 +42,19 @@ fi
 
 if [[ $# -gt 0 ]]; then
   new_version="${1#v}"
+elif [[ "$PATCH_BUMP" == true ]]; then
+  IFS='.' read -r major minor patch_extra <<<"$current_version"
+  if [[ -z "${major:-}" || -z "${minor:-}" || -z "${patch_extra:-}" ]]; then
+    echo "error: cannot patch-bump non-semver version: $current_version" >&2
+    exit 1
+  fi
+
+  if ! [[ "$major" =~ ^[0-9]+$ && "$minor" =~ ^[0-9]+$ && "$patch_extra" =~ ^[0-9]+$ ]]; then
+    echo "error: cannot patch-bump non-semver version: $current_version" >&2
+    exit 1
+  fi
+
+  new_version="$major.$minor.$((patch_extra + 1))"
 else
   IFS='.' read -r major minor patch_extra <<<"$current_version"
   if [[ -z "${major:-}" || -z "${minor:-}" || -z "${patch_extra:-}" ]]; then
