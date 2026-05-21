@@ -65,7 +65,7 @@ Environment:
   OPENAI_REASONING_EFFORT     Default: $OPENAI_REASONING_EFFORT
   NOTARY_PROFILE              Passed through to Scripts/notarize-app.sh. Default there: sasu-notary
   RELEASE_TAG                 Default: current app version, $VERSION
-  SKIP_SASU_GIT_PUSH          Set to 1 to skip committing/pushing AppBundle/Info.plist.
+  SKIP_SASU_GIT_PUSH          Set to 1 to skip committing/pushing the sasu repo.
 EOF
 }
 
@@ -82,21 +82,30 @@ commit_and_push_sasu_repo() {
     exit 1
   }
 
-  local other_dirty
-  other_dirty="$(
+  local path
+  local skipped_dirty=()
+  while IFS= read -r path; do
+    [[ -z "$path" ]] && continue
+    case "$path" in
+      Sources/*|AppBundle/*)
+        ;;
+      *)
+        skipped_dirty+=("$path")
+        ;;
+    esac
+  done < <(
     git -C "$sasu_repo" status --porcelain --untracked-files=no \
       | cut -c4- \
-      | sed 's/.* -> //' \
-      | grep -vx "$plist_relative" \
-      | grep -v '^$' \
-      || true
-  )"
-  if [[ -n "$other_dirty" ]]; then
-    echo "error: working tree has uncommitted changes outside $plist_relative:" >&2
-    echo "$other_dirty" >&2
-    echo "Commit or stash them before releasing." >&2
-    exit 1
+      | sed 's/.* -> //'
+  )
+
+  if [[ ${#skipped_dirty[@]} -gt 0 ]]; then
+    echo "Note: these uncommitted files are not included in the release commit:"
+    printf '  %s\n' "${skipped_dirty[@]}"
   fi
+
+  git -C "$sasu_repo" add "$plist_relative"
+  git -C "$sasu_repo" add -u Sources/ AppBundle/
 
   if git -C "$sasu_repo" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
     echo "error: tag $TAG already exists on origin." >&2
@@ -108,11 +117,10 @@ commit_and_push_sasu_repo() {
     exit 1
   fi
 
-  git -C "$sasu_repo" add "$plist_relative"
-  if ! git -C "$sasu_repo" diff --cached --quiet -- "$plist_relative"; then
-    git -C "$sasu_repo" commit -m "Release Sasu $VERSION" -- "$plist_relative"
+  if ! git -C "$sasu_repo" diff --cached --quiet; then
+    git -C "$sasu_repo" commit -m "Release Sasu $VERSION"
   else
-    echo "AppBundle/Info.plist already matches HEAD; creating release tag only."
+    echo "App source and Info.plist already match HEAD; creating release tag only."
   fi
 
   git -C "$sasu_repo" tag -a "$TAG" -m "Sasu $VERSION"
