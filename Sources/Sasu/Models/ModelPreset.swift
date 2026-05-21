@@ -17,9 +17,18 @@ struct ModelPreset: Identifiable, Equatable {
         imageDetail: "high"
     )
 
+    static let gpt55MediumFast = ModelPreset(
+        id: "gpt55MediumFast",
+        label: "Better (GPT-5.5 Medium Fast)",
+        modelID: "gpt-5.5",
+        reasoningEffort: "medium",
+        serviceTier: "priority",
+        imageDetail: "high"
+    )
+
     static let gpt55High = ModelPreset(
         id: "gpt55High",
-        label: "Better (GPT-5.5 High)",
+        label: "GPT-5.5 High",
         modelID: "gpt-5.5",
         reasoningEffort: "high",
         serviceTier: "auto",
@@ -28,6 +37,7 @@ struct ModelPreset: Identifiable, Equatable {
 
     static let all: [ModelPreset] = [
         .gpt55HighFast,
+        .gpt55MediumFast,
         .gpt55High
     ]
 

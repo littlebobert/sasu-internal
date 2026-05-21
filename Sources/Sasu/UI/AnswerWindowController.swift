@@ -33,6 +33,10 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         window?.orderOut(nil)
     }
 
+    var isVisible: Bool {
+        window?.isVisible == true
+    }
+
     func toolbar(
         _ toolbar: NSToolbar,
         itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
@@ -44,6 +48,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 identifier: itemIdentifier,
                 label: "Capture",
                 symbolNames: ["camera.viewfinder", "rectangle.dashed"],
+                symbolStyle: .accent,
                 action: #selector(captureScreen)
             )
         case .translateClipboard:
@@ -51,6 +56,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 identifier: itemIdentifier,
                 label: "Translate Clipboard",
                 symbolNames: ["translate", "character.book.closed", "textformat"],
+                symbolStyle: .accent,
                 action: #selector(translateClipboard)
             )
         case .copyAnswer:
@@ -58,6 +64,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 identifier: itemIdentifier,
                 label: "Copy Answer",
                 symbolNames: ["doc.on.doc", "doc.on.clipboard"],
+                symbolStyle: .accent,
                 action: #selector(copyAnswer)
             )
         case .clearTranscript:
@@ -65,13 +72,15 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 identifier: itemIdentifier,
                 label: "Clear",
                 symbolNames: ["trash"],
+                symbolStyle: .multicolor,
                 action: #selector(clearTranscript)
             )
         case .settings:
             return toolbarItem(
                 identifier: itemIdentifier,
                 label: "Settings",
-                symbolNames: ["gearshape", "gear"],
+                symbolNames: ["gear", "gearshape"],
+                symbolStyle: .multicolor,
                 action: #selector(showSettings)
             )
         default:
@@ -161,26 +170,54 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         identifier: NSToolbarItem.Identifier,
         label: String,
         symbolNames: [String],
+        symbolStyle: ToolbarSymbolStyle,
         action: Selector
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: identifier)
         item.label = label
         item.paletteLabel = label
         item.toolTip = label
-        item.image = Self.symbolImage(named: symbolNames)
+        item.image = Self.symbolImage(named: symbolNames, style: symbolStyle)
         item.target = self
         item.action = action
         return item
     }
 
-    private static func symbolImage(named symbolNames: [String]) -> NSImage? {
+    private enum ToolbarSymbolStyle {
+        case multicolor
+        case accent
+    }
+
+    private static let toolbarSymbolConfiguration = NSImage.SymbolConfiguration(
+        pointSize: 15,
+        weight: .regular
+    )
+
+    private static func symbolImage(named symbolNames: [String], style: ToolbarSymbolStyle) -> NSImage? {
         for symbolName in symbolNames {
-            if let image = NSImage(
+            guard let image = NSImage(
                 systemSymbolName: symbolName,
                 accessibilityDescription: nil
-            ) {
-                return image
+            ) else {
+                continue
             }
+
+            let configuration: NSImage.SymbolConfiguration
+            switch style {
+            case .multicolor:
+                configuration = toolbarSymbolConfiguration.applying(.preferringMulticolor())
+            case .accent:
+                configuration = toolbarSymbolConfiguration.applying(
+                    NSImage.SymbolConfiguration(paletteColors: [NSColor.controlAccentColor])
+                )
+            }
+
+            guard let configuredImage = image.withSymbolConfiguration(configuration) else {
+                continue
+            }
+
+            configuredImage.isTemplate = false
+            return configuredImage
         }
 
         return nil

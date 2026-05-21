@@ -22,6 +22,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window?.isVisible == true
     }
 
+    func hide() {
+        window?.orderOut(nil)
+    }
+
     func windowWillClose(_ notification: Notification) {
         onClose?()
     }

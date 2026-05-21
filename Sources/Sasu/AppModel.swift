@@ -104,6 +104,8 @@ final class AppModel: ObservableObject {
     private var shouldRestoreAnswerWindowAfterHighlight = false
     private var windowsHiddenForHighlight: [NSWindow] = []
     private var hasPresentedScreenRecordingPrimer = false
+    private var shouldRestoreTranscriptAfterScreenRecordingPrompt = false
+    private var shouldRestoreSettingsAfterScreenRecordingPrompt = false
     private var appActivationObserver: NSObjectProtocol?
     private var attentionRequestID: Int?
     private var standardWindowPresentationIDs = Set<String>()
@@ -189,6 +191,8 @@ final class AppModel: ObservableObject {
             // Let the app finish installing menu/activation state before presenting launch UI.
             try? await Task.sleep(nanoseconds: 100_000_000)
             await MainActor.run {
+                guard CGPreflightScreenCaptureAccess() else { return }
+
                 if shouldShowSettings {
                     self.showSettingsWindowWithStandardOrdering()
                 } else {
@@ -517,6 +521,7 @@ final class AppModel: ObservableObject {
             Task { @MainActor in
                 self?.cancelUserAttentionRequestIfNeeded()
                 self?.restoreHighlightWindowsAfterUserReturn()
+                self?.restoreWindowsAfterScreenRecordingPermissionIfNeeded()
             }
         }
     }
@@ -602,6 +607,8 @@ final class AppModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 300_000_000)
             guard !CGPreflightScreenCaptureAccess() else { return }
 
+            noteWindowsToRestoreAfterScreenRecordingPrompt()
+            hideWindowsForSystemPermissionPrompt()
             NSApp.activate(ignoringOtherApps: true)
 
             let alert = NSAlert()
@@ -625,14 +632,56 @@ final class AppModel: ObservableObject {
     }
 
     private func requestScreenRecordingPermission() {
+        noteWindowsToRestoreAfterScreenRecordingPrompt()
+        hideWindowsForSystemPermissionPrompt()
+
         statusMessage = "Waiting for Screen Recording permission..."
         _ = CGRequestScreenCaptureAccess()
 
         if CGPreflightScreenCaptureAccess() {
             statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            restoreWindowsAfterScreenRecordingPrompt()
         } else {
             statusMessage = "Approve the macOS Screen Recording prompt. If you do not see it, use Open Screen Recording Settings."
         }
+    }
+
+    private func noteWindowsToRestoreAfterScreenRecordingPrompt() {
+        if hasStoredAPIKey {
+            shouldRestoreTranscriptAfterScreenRecordingPrompt = true
+            shouldRestoreSettingsAfterScreenRecordingPrompt = false
+        } else {
+            shouldRestoreSettingsAfterScreenRecordingPrompt = true
+            shouldRestoreTranscriptAfterScreenRecordingPrompt = false
+        }
+    }
+
+    private func hideWindowsForSystemPermissionPrompt() {
+        answerWindowController.hide()
+        settingsWindowController.hide()
+    }
+
+    private func restoreWindowsAfterScreenRecordingPermissionIfNeeded() {
+        guard shouldRestoreTranscriptAfterScreenRecordingPrompt
+            || shouldRestoreSettingsAfterScreenRecordingPrompt
+        else { return }
+
+        if CGPreflightScreenCaptureAccess() {
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+        }
+
+        restoreWindowsAfterScreenRecordingPrompt()
+    }
+
+    private func restoreWindowsAfterScreenRecordingPrompt() {
+        if shouldRestoreSettingsAfterScreenRecordingPrompt {
+            showSettingsWindowWithStandardOrdering()
+        } else if shouldRestoreTranscriptAfterScreenRecordingPrompt {
+            answerWindowController.show(appModel: self)
+        }
+
+        shouldRestoreTranscriptAfterScreenRecordingPrompt = false
+        shouldRestoreSettingsAfterScreenRecordingPrompt = false
     }
 
     func relaunchSasu() {
