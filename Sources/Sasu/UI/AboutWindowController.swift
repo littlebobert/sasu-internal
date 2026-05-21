@@ -62,14 +62,11 @@ private struct AboutView: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text("On-screen guidance for macOS.")
+            Text("On-screen guidance for macOS")
                 .multilineTextAlignment(.center)
 
-            Text("Made in Japan.")
+            Link("Made in Japan", destination: URL(string: "http://sasu.jp")!)
                 .font(.callout)
-                .foregroundStyle(.secondary)
-
-            Link("More Info", destination: URL(string: "http://sasu.jp/")!)
         }
         .padding(12)
         .frame(width: 300, height: 230)
