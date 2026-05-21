@@ -26,19 +26,9 @@ struct ModelPreset: Identifiable, Equatable {
         imageDetail: "high"
     )
 
-    static let gpt55High = ModelPreset(
-        id: "gpt55High",
-        label: "GPT-5.5 High",
-        modelID: "gpt-5.5",
-        reasoningEffort: "high",
-        serviceTier: "auto",
-        imageDetail: "high"
-    )
-
     static let all: [ModelPreset] = [
         .gpt55HighFast,
-        .gpt55MediumFast,
-        .gpt55High
+        .gpt55MediumFast
     ]
 
     static func preset(id: String) -> ModelPreset {

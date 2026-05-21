@@ -317,6 +317,9 @@ final class AppModel: ObservableObject {
 
     private static func availablePresetID(_ presetID: String?) -> String? {
         guard let presetID else { return nil }
+        if presetID == "gpt55High" {
+            return ModelPreset.gpt55HighFast.id
+        }
         return ModelPreset.all.contains { $0.id == presetID } ? presetID : nil
     }
 
