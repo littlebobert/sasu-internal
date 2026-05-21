@@ -530,9 +530,24 @@ text = re.sub(
 text = re.sub(r'data-label-en="Download [^"]*for macOS"', 'data-label-en="Download for macOS"', text)
 text = re.sub(r'data-label-ja="macOS版[^"]*をダウンロード"', 'data-label-ja="macOS版をダウンロード"', text)
 text = re.sub(r'>Download [^<]*for macOS</a>', '>Download for macOS</a>', text)
-text = re.sub(r'data-label-en="\\(version [^"]+\\)"', f'data-label-en="(version {version})"', text)
-text = re.sub(r'data-label-ja="（バージョン [^"]+）"', f'data-label-ja="（バージョン {version}）"', text)
-text = re.sub(r'>\\(version [^<]+\\)</span>', f'>(version {version})</span>', text)
+
+download_version_re = re.compile(
+    r'<span\s+class="download-version"\s+'
+    r'data-label-en="\(version [^"]+\)"\s+'
+    r'data-label-ja="（バージョン [^"]+）"\s*'
+    r'>\(version [^<]+\)</span>',
+    re.S,
+)
+if not download_version_re.search(text):
+    raise SystemExit(f"Could not find download-version span in {path}")
+text = download_version_re.sub(
+    '<span\n        class="download-version"\n        '
+    f'data-label-en="(version {version})"\n        '
+    f'data-label-ja="（バージョン {version}）"\n      '
+    f'>(version {version})</span>',
+    text,
+    count=1,
+)
 
 text = re.sub(r'(<h3\s+data-label-en="[^"]+ \(Current\)"\s+data-label-ja="[^"]+（現在）"\s*>[^<]+)</h3>', lambda m: m.group(1).replace(" (Current)", "").replace("（現在）", "") + "</h3>", text)
 
