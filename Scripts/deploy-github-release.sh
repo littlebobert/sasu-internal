@@ -65,7 +65,67 @@ Environment:
   OPENAI_REASONING_EFFORT     Default: $OPENAI_REASONING_EFFORT
   NOTARY_PROFILE              Passed through to Scripts/notarize-app.sh. Default there: sasu-notary
   RELEASE_TAG                 Default: current app version, $VERSION
+  SKIP_SASU_GIT_PUSH          Set to 1 to skip committing/pushing AppBundle/Info.plist.
 EOF
+}
+
+commit_and_push_sasu_repo() {
+  if [[ "${SKIP_SASU_GIT_PUSH:-}" == "1" ]]; then
+    echo "Skipping sasu repo commit/push (SKIP_SASU_GIT_PUSH=1)."
+    return 0
+  fi
+
+  local plist_relative="AppBundle/Info.plist"
+  local sasu_repo
+  sasu_repo="$(git -C "$ROOT_DIR" rev-parse --show-toplevel 2>/dev/null)" || {
+    echo "error: $ROOT_DIR is not inside a git repository." >&2
+    exit 1
+  }
+
+  local other_dirty
+  other_dirty="$(
+    git -C "$sasu_repo" status --porcelain --untracked-files=no \
+      | cut -c4- \
+      | sed 's/.* -> //' \
+      | grep -vx "$plist_relative" \
+      | grep -v '^$' \
+      || true
+  )"
+  if [[ -n "$other_dirty" ]]; then
+    echo "error: working tree has uncommitted changes outside $plist_relative:" >&2
+    echo "$other_dirty" >&2
+    echo "Commit or stash them before releasing." >&2
+    exit 1
+  fi
+
+  if git -C "$sasu_repo" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+    echo "error: tag $TAG already exists on origin." >&2
+    exit 1
+  fi
+
+  if git -C "$sasu_repo" rev-parse --verify --quiet "$TAG^{commit}" >/dev/null 2>&1; then
+    echo "error: tag $TAG already exists locally." >&2
+    exit 1
+  fi
+
+  git -C "$sasu_repo" add "$plist_relative"
+  if ! git -C "$sasu_repo" diff --cached --quiet -- "$plist_relative"; then
+    git -C "$sasu_repo" commit -m "Release Sasu $VERSION" -- "$plist_relative"
+  else
+    echo "AppBundle/Info.plist already matches HEAD; creating release tag only."
+  fi
+
+  git -C "$sasu_repo" tag -a "$TAG" -m "Sasu $VERSION"
+  local branch
+  branch="$(git -C "$sasu_repo" rev-parse --abbrev-ref HEAD)"
+  if [[ "$branch" == "HEAD" ]]; then
+    echo "error: cannot push from a detached HEAD." >&2
+    exit 1
+  fi
+
+  echo "Pushing sasu repo ($branch) and tag $TAG..."
+  git -C "$sasu_repo" push origin "$branch"
+  git -C "$sasu_repo" push origin "$TAG"
 }
 
 VERSION_ARG=""
@@ -565,6 +625,8 @@ else
 fi
 
 cp "$APPCAST_WORK_DIR/appcast.xml" "$APPCAST_PATH"
+
+commit_and_push_sasu_repo
 
 echo "Creating GitHub release $TAG in $REPO..."
 gh release create "$TAG" "$release_zip" \
