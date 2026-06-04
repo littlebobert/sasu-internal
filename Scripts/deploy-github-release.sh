@@ -18,6 +18,8 @@ BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/
 TAG="${RELEASE_TAG:-$VERSION}"
 LANDING_PAGE="${LANDING_PAGE:-$ROOT_DIR/../littlebobert.github.io/sasu.html}"
 INVITE_PAGE="${INVITE_PAGE:-$(dirname "$LANDING_PAGE")/sasu-invite.html}"
+SASU_COMMON_CSS="${SASU_COMMON_CSS:-$(dirname "$LANDING_PAGE")/sasu-common.css}"
+SASU_COMMON_JS="${SASU_COMMON_JS:-$(dirname "$LANDING_PAGE")/sasu-common.js}"
 APPCAST_PATH="${APPCAST_PATH:-$(dirname "$LANDING_PAGE")/appcast.xml}"
 APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
 APPCAST_PRODUCT_LINK="${APPCAST_PRODUCT_LINK:-http://sasu.jp}"
@@ -53,6 +55,8 @@ Environment:
   GITHUB_REPO                 GitHub repo to create the release in. Default: $REPO
   LANDING_PAGE                Path to sasu.html. Default: $LANDING_PAGE
   INVITE_PAGE                 Path to sasu-invite.html. Default: $INVITE_PAGE
+  SASU_COMMON_CSS             Path to shared Sasu CSS. Default: $SASU_COMMON_CSS
+  SASU_COMMON_JS              Path to shared Sasu JS. Default: $SASU_COMMON_JS
   APPCAST_PATH                Path to appcast.xml. Default: $APPCAST_PATH
   APPCAST_DOWNLOAD_URL_PREFIX Download URL prefix for appcast updates.
                                Default: $APPCAST_DOWNLOAD_URL_PREFIX
@@ -242,6 +246,16 @@ if [[ ! -f "$INVITE_PAGE" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$SASU_COMMON_CSS" ]]; then
+  echo "error: shared Sasu CSS not found: $SASU_COMMON_CSS" >&2
+  exit 1
+fi
+
+if [[ ! -f "$SASU_COMMON_JS" ]]; then
+  echo "error: shared Sasu JS not found: $SASU_COMMON_JS" >&2
+  exit 1
+fi
+
 if [[ ! -x "$SPARKLE_GENERATE_APPCAST" ]]; then
   echo "error: Sparkle generate_appcast not found: $SPARKLE_GENERATE_APPCAST" >&2
   echo "Run 'swift package resolve' and try again." >&2
@@ -250,11 +264,20 @@ fi
 
 LANDING_REPO="$(git -C "$(dirname "$LANDING_PAGE")" rev-parse --show-toplevel)"
 INVITE_REPO="$(git -C "$(dirname "$INVITE_PAGE")" rev-parse --show-toplevel)"
+COMMON_CSS_REPO="$(git -C "$(dirname "$SASU_COMMON_CSS")" rev-parse --show-toplevel)"
+COMMON_JS_REPO="$(git -C "$(dirname "$SASU_COMMON_JS")" rev-parse --show-toplevel)"
 APPCAST_REPO="$(git -C "$(dirname "$APPCAST_PATH")" rev-parse --show-toplevel)"
 if [[ "$INVITE_REPO" != "$LANDING_REPO" ]]; then
   echo "error: INVITE_PAGE must live in the same git repo as LANDING_PAGE." >&2
   echo "LANDING_PAGE repo: $LANDING_REPO" >&2
   echo "INVITE_PAGE repo: $INVITE_REPO" >&2
+  exit 1
+fi
+if [[ "$COMMON_CSS_REPO" != "$LANDING_REPO" || "$COMMON_JS_REPO" != "$LANDING_REPO" ]]; then
+  echo "error: shared Sasu CSS/JS must live in the same git repo as LANDING_PAGE." >&2
+  echo "LANDING_PAGE repo: $LANDING_REPO" >&2
+  echo "SASU_COMMON_CSS repo: $COMMON_CSS_REPO" >&2
+  echo "SASU_COMMON_JS repo: $COMMON_JS_REPO" >&2
   exit 1
 fi
 if [[ "$APPCAST_REPO" != "$LANDING_REPO" ]]; then
@@ -273,6 +296,22 @@ PY
 )"
 INVITE_RELATIVE_PATH="$(
   python3 - "$LANDING_REPO" "$INVITE_PAGE" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)"
+COMMON_CSS_RELATIVE_PATH="$(
+  python3 - "$LANDING_REPO" "$SASU_COMMON_CSS" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)"
+COMMON_JS_RELATIVE_PATH="$(
+  python3 - "$LANDING_REPO" "$SASU_COMMON_JS" <<'PY'
 import os
 import sys
 
@@ -717,12 +756,12 @@ gh release create "$TAG" "$release_zip" \
   --notes-file "$NOTES_MD"
 
 echo "Committing and pushing landing page/appcast..."
-landing_changes="$(git -C "$LANDING_REPO" status --porcelain -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH")"
+landing_changes="$(git -C "$LANDING_REPO" status --porcelain -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$COMMON_CSS_RELATIVE_PATH" "$COMMON_JS_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH")"
 if [[ -z "$landing_changes" ]]; then
-  echo "Landing page, invite page, and appcast already up to date."
+  echo "Landing page, invite page, shared Sasu assets, and appcast already up to date."
 else
-  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
-  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
+  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$COMMON_CSS_RELATIVE_PATH" "$COMMON_JS_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
+  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$COMMON_CSS_RELATIVE_PATH" "$COMMON_JS_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
   git -C "$LANDING_REPO" push
 fi
 
@@ -731,3 +770,5 @@ echo "Release artifact: $release_zip"
 echo "Updated appcast: $APPCAST_PATH"
 echo "Updated landing page: $LANDING_PAGE"
 echo "Updated invite page: $INVITE_PAGE"
+echo "Updated shared Sasu CSS: $SASU_COMMON_CSS"
+echo "Updated shared Sasu JS: $SASU_COMMON_JS"

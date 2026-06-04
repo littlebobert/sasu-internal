@@ -116,11 +116,11 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
 
         switch item.itemIdentifier {
         case .captureScreen, .translateClipboard:
-            return !appModel.isRequestInFlight
+            return !appModel.isRequestInFlight && !appModel.isFirstLaunchOnboardingVisible
         case .copyAnswer:
             return appModel.lastResponse != nil
         case .clearTranscript:
-            return !appModel.transcriptMessages.isEmpty && !appModel.isRequestInFlight
+            return !appModel.transcriptMessages.isEmpty && !appModel.isRequestInFlight && !appModel.isFirstLaunchOnboardingVisible
         case .settings:
             return true
         default:
@@ -261,7 +261,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         let screenFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let width = min(max(screenFrame.width * 0.42, 560), 700)
-        let height = min(max(screenFrame.height * 0.65, 520), 760)
+        let height = min(max(screenFrame.height * 0.42, 360), 520)
         let x = screenFrame.midX - width / 2
         let y = screenFrame.midY - height / 2
 

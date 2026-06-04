@@ -72,6 +72,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var lastResponse: AssistantResponse?
     @Published private(set) var currentHighlightSuggestion: HighlightSuggestion?
     @Published private(set) var isHighlightVisible = false
+    @Published private(set) var isFirstLaunchOnboardingVisible = false
+    @Published private(set) var isOnboardingGuidanceVisible = false
     @Published private(set) var transcriptMessages: [ChatTranscriptMessage] = []
     @Published var followUpText = ""
     @Published private(set) var querySelectionNonce = 0
@@ -89,6 +91,7 @@ final class AppModel: ObservableObject {
     private static let translateClipboardHotkeyKeyCodeKey = "translateClipboardHotkeyKeyCode"
     private static let translateClipboardHotkeyModifiersKey = "translateClipboardHotkeyModifiers"
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
+    private static let hasCompletedFirstLaunchOnboardingKey = "hasCompletedFirstLaunchOnboarding"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
     private static let settingsWindowPresentationID = "settings"
     private static let aboutWindowPresentationID = "about"
@@ -193,6 +196,10 @@ final class AppModel: ObservableObject {
         if savedAccessMode == nil, !hasStoredBackendAccessToken, hasStoredAPIKey {
             accessMode = .apiKey
         }
+        if defaults.object(forKey: Self.hasCompletedFirstLaunchOnboardingKey) == nil,
+           defaults.bool(forKey: Self.hasCompletedFirstLaunchKey) {
+            defaults.set(true, forKey: Self.hasCompletedFirstLaunchOnboardingKey)
+        }
         applySelectedModelPreset()
     }
 
@@ -205,7 +212,6 @@ final class AppModel: ObservableObject {
         }
 
         registerAppActivationObserverIfNeeded()
-        presentScreenRecordingPrimerIfNeeded()
     }
 
     func showLaunchWindowIfNeeded() {
@@ -217,12 +223,27 @@ final class AppModel: ObservableObject {
             // Let the app finish installing menu/activation state before presenting launch UI.
             try? await Task.sleep(nanoseconds: 100_000_000)
             await MainActor.run {
-                guard CGPreflightScreenCaptureAccess() else { return }
+                if CGPreflightScreenCaptureAccess() {
+                    isFirstLaunchOnboardingVisible = false
+                    isOnboardingGuidanceVisible = false
+                    if shouldShowSettings {
+                        self.showSettingsWindowWithStandardOrdering()
+                    } else {
+                        answerWindowController.show(appModel: self)
+                    }
+                    return
+                }
 
-                if shouldShowSettings {
+                if shouldShowFirstLaunchOnboarding {
+                    showFirstLaunchOnboarding()
+                } else if shouldShowSettings {
                     self.showSettingsWindowWithStandardOrdering()
                 } else {
                     answerWindowController.show(appModel: self)
+                }
+
+                if !shouldShowFirstLaunchOnboarding {
+                    presentScreenRecordingPrimerIfNeeded()
                 }
             }
         }
@@ -234,7 +255,9 @@ final class AppModel: ObservableObject {
     }
 
     func showWindowForReopen() {
-        if hasConfiguredAccess {
+        if isFirstLaunchOnboardingVisible || (!CGPreflightScreenCaptureAccess() && shouldShowFirstLaunchOnboarding) {
+            showFirstLaunchOnboarding()
+        } else if hasConfiguredAccess {
             answerWindowController.show(appModel: self)
         } else {
             showSettingsWindowWithStandardOrdering()
@@ -243,6 +266,58 @@ final class AppModel: ObservableObject {
 
     func showTranscriptWindow() {
         answerWindowController.show(appModel: self)
+    }
+
+    private var shouldShowFirstLaunchOnboarding: Bool {
+        !defaults.bool(forKey: Self.hasCompletedFirstLaunchOnboardingKey)
+    }
+
+    private func showFirstLaunchOnboarding() {
+        isFirstLaunchOnboardingVisible = true
+        isOnboardingGuidanceVisible = false
+        errorMessage = nil
+        shouldOfferPermissionRelaunch = false
+        statusMessage = "Welcome to Sasu. Try the example before enabling Screen Recording."
+        answerWindowController.show(appModel: self)
+    }
+
+    func showOnboardingGuidance() {
+        isOnboardingGuidanceVisible = true
+        statusMessage = "Sasu can point to the next place to click."
+    }
+
+    func hideOnboardingGuidance() {
+        isOnboardingGuidanceVisible = false
+        statusMessage = "Welcome to Sasu. Try the example before enabling Screen Recording."
+    }
+
+    func completeFirstLaunchOnboarding() {
+        defaults.set(true, forKey: Self.hasCompletedFirstLaunchOnboardingKey)
+        isFirstLaunchOnboardingVisible = false
+        isOnboardingGuidanceVisible = false
+        statusMessage = "Next, enable Screen Recording so Sasu can see the page you ask about."
+
+        if CGPreflightScreenCaptureAccess() {
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            return
+        }
+
+        presentScreenRecordingPrimerIfNeeded()
+    }
+
+    func contactDeveloperAboutOnboarding() {
+        let email = "justin.garcia@gmail.com"
+        let subject = "Question about Sasu"
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = email
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject)
+        ]
+
+        if let url = components.url {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private var hasConfiguredAccess: Bool {
@@ -523,6 +598,10 @@ final class AppModel: ObservableObject {
 
     func captureAndAsk() {
         guard !isRequestInFlight else { return }
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            return
+        }
 
         currentRequestTask = Task {
             await prepareScreenshotForQuery()
@@ -531,6 +610,10 @@ final class AppModel: ObservableObject {
 
     func translateClipboard() {
         guard !isRequestInFlight else { return }
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            return
+        }
 
         currentRequestTask = Task {
             await runTranslateClipboard()
@@ -538,6 +621,10 @@ final class AppModel: ObservableObject {
     }
 
     func sendFollowUp() {
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            return
+        }
         let followUp = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !followUp.isEmpty else { return }
         guard lastScreenshot != nil else {
@@ -781,13 +868,13 @@ final class AppModel: ObservableObject {
             macOS requires Screen Recording permission before Sasu can see the page or app you want help with.
             """
             alert.addButton(withTitle: "Accept Screen Recording")
-            alert.addButton(withTitle: "Quit")
+            alert.addButton(withTitle: "Not Yet")
 
             switch alert.runModal() {
             case .alertFirstButtonReturn:
                 requestScreenRecordingPermission()
             default:
-                NSApp.terminate(nil)
+                showFirstLaunchOnboarding()
             }
         }
     }

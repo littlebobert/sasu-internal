@@ -7,12 +7,16 @@ struct AnswerPanelView: View {
         VStack(alignment: .leading, spacing: 14) {
             header
             Divider()
-            answerBody
-            Divider()
-            followUp
+            if appModel.isFirstLaunchOnboardingVisible {
+                onboardingBody
+            } else {
+                answerBody
+                Divider()
+                followUp
+            }
         }
-        .padding(18)
-        .frame(minWidth: 420, minHeight: 420)
+        .padding(appModel.isFirstLaunchOnboardingVisible ? 14 : 18)
+        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 300 : 420)
     }
 
     private var header: some View {
@@ -36,6 +40,111 @@ struct AnswerPanelView: View {
                 }
             }
         }
+    }
+
+    private var onboardingBody: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Try Sasu on this example")
+                .font(.title3.bold())
+
+            HStack(alignment: .top, spacing: 16) {
+                onboardingDocument
+                    .frame(maxWidth: .infinity, alignment: .top)
+
+                onboardingExplanation
+                    .frame(maxWidth: .infinity, alignment: .top)
+            }
+
+            Text("When you’re ready, click the Japanese button. Then Sasu will ask macOS for Screen Recording permission.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+
+            Button("Have questions? Contact me (the developer).") {
+                appModel.contactDeveloperAboutOnboarding()
+            }
+            .buttonStyle(.link)
+            .font(.caption)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var onboardingDocument: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("日本語のサンプル")
+                .font(.caption.bold())
+                .foregroundStyle(.secondary)
+
+            Text("Sasuへようこそ。")
+                .font(.title3.bold())
+
+            Text("日本語のページやフォームで迷ったとき、Sasuが画面上で意味と次に押す場所を案内します。")
+                .font(.body)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if appModel.isOnboardingGuidanceVisible {
+                Text("Click this green button to get started.")
+                    .font(.caption.bold())
+                    .foregroundStyle(.blue)
+            }
+
+            Button {
+                appModel.completeFirstLaunchOnboarding()
+            } label: {
+                Text("Sasuを始める")
+                    .font(.body.bold())
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .padding(.vertical, 8)
+            .padding(.horizontal, 14)
+            .foregroundStyle(.white)
+            .background(Color.green)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                if appModel.isOnboardingGuidanceVisible {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.blue, lineWidth: 4)
+                        .padding(-6)
+                }
+            }
+            .shadow(color: appModel.isOnboardingGuidanceVisible ? Color.blue.opacity(0.35) : .clear, radius: 8)
+        }
+        .padding(14)
+        .background(Color(nsColor: .textBackgroundColor))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .overlay {
+            RoundedRectangle(cornerRadius: 14)
+                .stroke(Color.secondary.opacity(0.25), lineWidth: 1)
+        }
+    }
+
+    private var onboardingExplanation: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Sasu")
+                .font(.caption.bold())
+                .foregroundStyle(.primary)
+
+            Text("This is a welcome message for Sasu. It says Sasu helps explain Japanese pages and forms, then points to the next place to click. The green button means “Start using Sasu.”")
+                .fixedSize(horizontal: false, vertical: true)
+
+            Button(appModel.isOnboardingGuidanceVisible ? "Hide guidance" : "Show me where to click") {
+                if appModel.isOnboardingGuidanceVisible {
+                    appModel.hideOnboardingGuidance()
+                } else {
+                    appModel.showOnboardingGuidance()
+                }
+            }
+            .fixedSize()
+
+            if appModel.isOnboardingGuidanceVisible {
+                Text("Click `Sasuを始める` to start using Sasu.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(12)
+        .background(Color.blue.opacity(0.08))
+        .clipShape(RoundedRectangle(cornerRadius: 10))
     }
 
     @ViewBuilder
