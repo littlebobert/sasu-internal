@@ -6,6 +6,16 @@ import OSLog
 @MainActor
 final class AppModel: ObservableObject {
     private static let logger = Logger(subsystem: "dev.sasu.Sasu", category: "AppModel")
+    @Published var accessMode: AccessMode {
+        didSet { defaults.set(accessMode.rawValue, forKey: Self.accessModeKey) }
+    }
+    @Published var inviteCodeInput = ""
+    @Published var backendBaseURLInput: String {
+        didSet { defaults.set(backendBaseURLInput, forKey: Self.backendBaseURLKey) }
+    }
+    @Published private(set) var hasStoredBackendAccessToken = false
+    @Published private(set) var backendAccessLabel = ""
+    @Published private(set) var backendAccessTokenPreview = ""
     @Published var apiKeyInput = ""
     @Published private(set) var hasStoredAPIKey = false
     @Published private(set) var storedAPIKeyPreview = ""
@@ -53,7 +63,7 @@ final class AppModel: ObservableObject {
     }
     @Published private(set) var hotkeyDescription = HotkeyConfiguration.defaultConfiguration.displayName
     @Published private(set) var translateClipboardHotkeyDescription = HotkeyConfiguration.defaultTranslateClipboardConfiguration.displayName
-    @Published private(set) var statusMessage = "Add your OpenAI API key, then press the hotkey or use Capture Screen."
+    @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then press the hotkey or use Capture Screen."
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
     @Published private(set) var isRequestInFlight = false
@@ -66,6 +76,9 @@ final class AppModel: ObservableObject {
     @Published var followUpText = ""
     @Published private(set) var querySelectionNonce = 0
 
+    private static let accessModeKey = "accessMode"
+    private static let backendBaseURLKey = "backendBaseURL"
+    private static let backendAccessLabelKey = "backendAccessLabel"
     private static let modelIDKey = "modelID"
     private static let reasoningEffortKey = "reasoningEffort"
     private static let serviceTierKey = "serviceTier"
@@ -82,11 +95,15 @@ final class AppModel: ObservableObject {
     private static let retiredModelAliases = [
         "gpt-5.5-high-fast"
     ]
+    private static var defaultBackendBaseURL: String {
+        Bundle.main.object(forInfoDictionaryKey: "SASUBackendBaseURL") as? String ?? "https://sasu-backend.herokuapp.com"
+    }
 
     private let defaults: UserDefaults
     private let keychain: KeychainService
     private let screenshotService: ScreenshotService
     private let openAIClient: OpenAIClient
+    private let backendClient: BackendClient
     private let highlightGroundingService: HighlightGroundingService
     private let clipboardTextService: ClipboardTextService
     private let answerWindowController: AnswerWindowController
@@ -115,6 +132,7 @@ final class AppModel: ObservableObject {
         keychain: KeychainService = KeychainService(),
         screenshotService: ScreenshotService = ScreenshotService(),
         openAIClient: OpenAIClient = OpenAIClient(),
+        backendClient: BackendClient = BackendClient(),
         highlightGroundingService: HighlightGroundingService = HighlightGroundingService(),
         clipboardTextService: ClipboardTextService = ClipboardTextService()
     ) {
@@ -122,12 +140,16 @@ final class AppModel: ObservableObject {
         self.keychain = keychain
         self.screenshotService = screenshotService
         self.openAIClient = openAIClient
+        self.backendClient = backendClient
         self.highlightGroundingService = highlightGroundingService
         self.clipboardTextService = clipboardTextService
         self.answerWindowController = AnswerWindowController()
         self.settingsWindowController = SettingsWindowController()
         self.screenshotPreviewWindowController = ScreenshotPreviewWindowController()
         self.highlightOverlayController = HighlightOverlayController()
+        let savedAccessMode = defaults.string(forKey: Self.accessModeKey)
+        self.accessMode = AccessMode(rawValue: savedAccessMode ?? "") ?? .invite
+        self.backendBaseURLInput = defaults.string(forKey: Self.backendBaseURLKey) ?? Self.defaultBackendBaseURL
         let savedModelID = defaults.string(forKey: Self.modelIDKey)
         let initialModelID: String
         if let savedModelID, !Self.retiredModelAliases.contains(savedModelID) {
@@ -167,6 +189,10 @@ final class AppModel: ObservableObject {
         self.hotkeyDescription = hotkeyConfiguration.displayName
         self.translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
         refreshStoredAPIKeyPreview()
+        refreshStoredBackendAccessTokenPreview()
+        if savedAccessMode == nil, !hasStoredBackendAccessToken, hasStoredAPIKey {
+            accessMode = .apiKey
+        }
         applySelectedModelPreset()
     }
 
@@ -185,7 +211,7 @@ final class AppModel: ObservableObject {
     func showLaunchWindowIfNeeded() {
         let shouldRestoreSettings = defaults.bool(forKey: Self.shouldShowSettingsOnLaunchKey)
         defaults.set(true, forKey: Self.hasCompletedFirstLaunchKey)
-        let shouldShowSettings = !hasStoredAPIKey || shouldRestoreSettings
+        let shouldShowSettings = !hasConfiguredAccess || shouldRestoreSettings
 
         Task {
             // Let the app finish installing menu/activation state before presenting launch UI.
@@ -208,7 +234,7 @@ final class AppModel: ObservableObject {
     }
 
     func showWindowForReopen() {
-        if hasStoredAPIKey {
+        if hasConfiguredAccess {
             answerWindowController.show(appModel: self)
         } else {
             showSettingsWindowWithStandardOrdering()
@@ -217,6 +243,15 @@ final class AppModel: ObservableObject {
 
     func showTranscriptWindow() {
         answerWindowController.show(appModel: self)
+    }
+
+    private var hasConfiguredAccess: Bool {
+        switch accessMode {
+        case .invite:
+            return hasStoredBackendAccessToken
+        case .apiKey:
+            return hasStoredAPIKey
+        }
     }
 
     func beginAboutWindowPresentation() {
@@ -281,6 +316,24 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func redeemInviteCodeFromInput() {
+        redeemInviteCode(inviteCodeInput)
+    }
+
+    func deleteBackendAccessToken() {
+        do {
+            try keychain.deleteBackendAccessToken()
+            hasStoredBackendAccessToken = false
+            backendAccessTokenPreview = ""
+            backendAccessLabel = ""
+            defaults.removeObject(forKey: Self.backendAccessLabelKey)
+            errorMessage = nil
+            statusMessage = "Invite access cleared."
+        } catch {
+            errorMessage = "Could not clear invite access: \(error.localizedDescription)"
+        }
+    }
+
     private func refreshStoredAPIKeyPreview() {
         guard let apiKey = try? keychain.readAPIKey(), !apiKey.isEmpty else {
             hasStoredAPIKey = false
@@ -294,6 +347,111 @@ final class AppModel: ObservableObject {
 
     private static func apiKeyPreview(for apiKey: String) -> String {
         "sk-...\(apiKey.suffix(4))"
+    }
+
+    private func refreshStoredBackendAccessTokenPreview() {
+        backendAccessLabel = defaults.string(forKey: Self.backendAccessLabelKey) ?? ""
+        guard let token = try? keychain.readBackendAccessToken(), !token.isEmpty else {
+            hasStoredBackendAccessToken = false
+            backendAccessTokenPreview = ""
+            return
+        }
+
+        hasStoredBackendAccessToken = true
+        backendAccessTokenPreview = Self.backendTokenPreview(for: token)
+    }
+
+    private static func backendTokenPreview(for token: String) -> String {
+        "sasu_app_...\(token.suffix(4))"
+    }
+
+    func handleOpenedURL(_ url: URL) {
+        guard let inviteCode = Self.inviteCode(from: url) else {
+            errorMessage = "Sasu could not read the invite link."
+            showSettingsWindowWithStandardOrdering()
+            return
+        }
+
+        inviteCodeInput = inviteCode
+        accessMode = .invite
+        showSettingsWindowWithStandardOrdering()
+        redeemInviteCode(inviteCode)
+    }
+
+    private func redeemInviteCode(_ rawCode: String) {
+        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !code.isEmpty else {
+            errorMessage = "Paste an invite code before redeeming."
+            return
+        }
+        guard let backendBaseURL else {
+            errorMessage = AppError.invalidBackendURL.localizedDescription
+            return
+        }
+
+        isRequestInFlight = true
+        errorMessage = nil
+        statusMessage = "Redeeming invite..."
+
+        Task { @MainActor in
+            do {
+                let redemption = try await backendClient.redeemInvite(
+                    code: code,
+                    backendBaseURL: backendBaseURL
+                )
+                try keychain.saveBackendAccessToken(redemption.accessToken)
+                defaults.set(redemption.label, forKey: Self.backendAccessLabelKey)
+                inviteCodeInput = ""
+                accessMode = .invite
+                backendAccessLabel = redemption.label
+                backendAccessTokenPreview = Self.backendTokenPreview(for: redemption.accessToken)
+                hasStoredBackendAccessToken = true
+                errorMessage = nil
+                statusMessage = "Invite accepted. Sasu is ready."
+            } catch {
+                errorMessage = error.localizedDescription
+                statusMessage = "Could not redeem invite."
+            }
+
+            isRequestInFlight = false
+        }
+    }
+
+    private var backendBaseURL: URL? {
+        let trimmedURL = backendBaseURLInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmedURL),
+              let scheme = url.scheme?.lowercased(),
+              scheme == "https" || scheme == "http",
+              url.host != nil else {
+            return nil
+        }
+        return url
+    }
+
+    private static func inviteCode(from url: URL) -> String? {
+        guard url.scheme?.lowercased() == "sasu", url.host?.lowercased() == "invite" else {
+            return nil
+        }
+        let components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        return components?.queryItems?.first { $0.name == "code" }?.value
+    }
+
+    private func requestCredential() throws -> AIRequestCredential {
+        switch accessMode {
+        case .invite:
+            guard let token = try keychain.readBackendAccessToken(), !token.isEmpty else {
+                throw AppError.missingInviteAccess
+            }
+            guard let backendBaseURL else {
+                throw AppError.invalidBackendURL
+            }
+            return .backendAccessToken(token, baseURL: backendBaseURL)
+        case .apiKey:
+            guard let apiKey = try keychain.readAPIKey(), !apiKey.isEmpty else {
+                throw AppError.missingAPIKey
+            }
+            return .openAIAPIKey(apiKey)
+        }
     }
 
     func resetModelToDefault() {
@@ -650,7 +808,7 @@ final class AppModel: ObservableObject {
     }
 
     private func noteWindowsToRestoreAfterScreenRecordingPrompt() {
-        if hasStoredAPIKey {
+        if hasConfiguredAccess {
             shouldRestoreTranscriptAfterScreenRecordingPrompt = true
             shouldRestoreSettingsAfterScreenRecordingPrompt = false
         } else {
@@ -825,14 +983,12 @@ final class AppModel: ObservableObject {
             transcriptMessages.append(ChatTranscriptMessage(role: .user, text: "Clipboard text: \(sourceText)"))
 
             try Task.checkCancellation()
-            guard let apiKey = try keychain.readAPIKey(), !apiKey.isEmpty else {
-                throw AppError.missingAPIKey
-            }
+            let credential = try requestCredential()
 
             statusMessage = "Translating clipboard..."
             answerWindowController.show(appModel: self)
             let answer = try await openAIClient.translateClipboardText(
-                apiKey: apiKey,
+                credential: credential,
                 modelID: modelID,
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
@@ -891,9 +1047,7 @@ final class AppModel: ObservableObject {
 
         do {
             try Task.checkCancellation()
-            guard let apiKey = try keychain.readAPIKey(), !apiKey.isEmpty else {
-                throw AppError.missingAPIKey
-            }
+            let credential = try requestCredential()
 
             let screenshot: ScreenshotPayload
             if reuseLastScreenshot, let existingScreenshot = lastScreenshot {
@@ -920,7 +1074,7 @@ final class AppModel: ObservableObject {
             statusMessage = "Asking OpenAI..."
             answerWindowController.show(appModel: self)
             let result = try await openAIClient.askAboutScreenshot(
-                apiKey: apiKey,
+                credential: credential,
                 modelID: modelID,
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
@@ -1097,11 +1251,33 @@ final class AppModel: ObservableObject {
 
 enum AppError: LocalizedError {
     case missingAPIKey
+    case missingInviteAccess
+    case invalidBackendURL
 
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
             return "Add your OpenAI API key in Sasu before capturing the screen."
+        case .missingInviteAccess:
+            return "Open your Sasu invite link or redeem an invite code in Settings before using invite access."
+        case .invalidBackendURL:
+            return "Enter a valid Sasu backend URL in Settings."
+        }
+    }
+}
+
+enum AccessMode: String, CaseIterable, Identifiable {
+    case invite
+    case apiKey
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .invite:
+            return "Invite access"
+        case .apiKey:
+            return "My OpenAI API key"
         }
     }
 }

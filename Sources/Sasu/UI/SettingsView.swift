@@ -11,7 +11,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     hotkeySection
-                    apiKeySection
+                    accessSection
                     modelSection
                     captureSection
                 }
@@ -22,43 +22,118 @@ struct SettingsView: View {
         }
     }
 
-    private var apiKeySection: some View {
-        GroupBox("OpenAI API Key") {
+    private var accessSection: some View {
+        GroupBox("Access") {
             VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Circle()
-                        .fill(appModel.hasStoredAPIKey ? Color.green : Color.orange)
-                        .frame(width: 10, height: 10)
-                    Text(appModel.hasStoredAPIKey ? "API key saved in Keychain" : "No API key saved")
-                        .foregroundStyle(.secondary)
+                Picker("Use", selection: $appModel.accessMode) {
+                    ForEach(AccessMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
                 }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 420)
 
-                SecureField(apiKeyPlaceholder, text: $appModel.apiKeyInput)
-                    .textFieldStyle(.roundedBorder)
-                    .focused($isAPIKeyFieldFocused)
-                    .onChange(of: appModel.apiKeyInput) { newValue in
-                        hasEditedAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    }
-
-                HStack {
-                    Button("Save Key") {
-                        appModel.saveAPIKey()
-                        hasEditedAPIKey = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    }
-                    .keyboardShortcut(.defaultAction)
-                    .disabled(!canSaveAPIKey)
-
-                    Button("Clear Key") {
-                        appModel.deleteAPIKey()
-                        hasEditedAPIKey = false
-                    }
-                    .disabled(!appModel.hasStoredAPIKey)
+                switch appModel.accessMode {
+                case .invite:
+                    inviteAccessControls
+                case .apiKey:
+                    apiKeyControls
                 }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var inviteAccessControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Circle()
+                    .fill(appModel.hasStoredBackendAccessToken ? Color.green : Color.orange)
+                    .frame(width: 10, height: 10)
+                Text(inviteAccessStatus)
+                    .foregroundStyle(.secondary)
+            }
+
+            SecureField("sasu_inv_...", text: $appModel.inviteCodeInput)
+                .textFieldStyle(.roundedBorder)
+
+            HStack {
+                Button("Redeem Invite") {
+                    appModel.redeemInviteCodeFromInput()
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canRedeemInvite || appModel.isRequestInFlight)
+
+                Button("Clear Invite Access") {
+                    appModel.deleteBackendAccessToken()
+                }
+                .disabled(!appModel.hasStoredBackendAccessToken)
+            }
+
+            Text("Invite links should open Sasu automatically. If they do not, paste the invite code here.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Backend URL")
+                    .font(.caption.bold())
+                TextField("https://sasu-backend.herokuapp.com", text: $appModel.backendBaseURLInput)
+                    .textFieldStyle(.roundedBorder)
+            }
+        }
+    }
+
+    private var inviteAccessStatus: String {
+        guard appModel.hasStoredBackendAccessToken else {
+            return "No invite access saved"
+        }
+
+        if appModel.backendAccessLabel.isEmpty {
+            return "Invite access saved in Keychain"
+        }
+
+        return "Invite access saved for \(appModel.backendAccessLabel)"
+    }
+
+    private var canRedeemInvite: Bool {
+        !appModel.inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var apiKeyControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack {
+                Circle()
+                    .fill(appModel.hasStoredAPIKey ? Color.green : Color.orange)
+                    .frame(width: 10, height: 10)
+                Text(appModel.hasStoredAPIKey ? "API key saved in Keychain" : "No API key saved")
+                    .foregroundStyle(.secondary)
+            }
+
+            SecureField(apiKeyPlaceholder, text: $appModel.apiKeyInput)
+                .textFieldStyle(.roundedBorder)
+                .focused($isAPIKeyFieldFocused)
+                .onChange(of: appModel.apiKeyInput) { newValue in
+                    hasEditedAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+
+            HStack {
+                Button("Save Key") {
+                    appModel.saveAPIKey()
+                    hasEditedAPIKey = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                }
+                .keyboardShortcut(.defaultAction)
+                .disabled(!canSaveAPIKey)
+
+                Button("Clear Key") {
+                    appModel.deleteAPIKey()
+                    hasEditedAPIKey = false
+                }
+                .disabled(!appModel.hasStoredAPIKey)
+            }
+        }
     }
 
     private var apiKeyPlaceholder: String {

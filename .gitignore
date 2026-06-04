@@ -10,3 +10,7 @@ DerivedData/
 .env.*
 !.env.example
 !.env.release.example
+backend/.venv/
+backend/sasu-backend.db
+__pycache__/
+.pytest_cache/

@@ -3,14 +3,43 @@ import Security
 
 struct KeychainService {
     private let service = "dev.sasu.Sasu"
-    private let account = "OpenAIAPIKey"
+    private let apiKeyAccount = "OpenAIAPIKey"
+    private let backendAccessTokenAccount = "BackendAccessToken"
 
     func hasAPIKey() -> Bool {
         (try? readAPIKey()) != nil
     }
 
     func readAPIKey() throws -> String? {
-        var query = baseQuery()
+        try readSecret(account: apiKeyAccount)
+    }
+
+    func saveAPIKey(_ apiKey: String) throws {
+        try saveSecret(apiKey, account: apiKeyAccount)
+    }
+
+    func deleteAPIKey() throws {
+        try deleteSecret(account: apiKeyAccount)
+    }
+
+    func hasBackendAccessToken() -> Bool {
+        (try? readBackendAccessToken()) != nil
+    }
+
+    func readBackendAccessToken() throws -> String? {
+        try readSecret(account: backendAccessTokenAccount)
+    }
+
+    func saveBackendAccessToken(_ token: String) throws {
+        try saveSecret(token, account: backendAccessTokenAccount)
+    }
+
+    func deleteBackendAccessToken() throws {
+        try deleteSecret(account: backendAccessTokenAccount)
+    }
+
+    private func readSecret(account: String) throws -> String? {
+        var query = baseQuery(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -25,19 +54,17 @@ struct KeychainService {
             throw KeychainError.unhandledStatus(status)
         }
 
-        guard
-            let data = item as? Data,
-            let apiKey = String(data: data, encoding: .utf8)
-        else {
+        guard let data = item as? Data,
+              let secret = String(data: data, encoding: .utf8) else {
             throw KeychainError.invalidData
         }
 
-        return apiKey
+        return secret
     }
 
-    func saveAPIKey(_ apiKey: String) throws {
-        let data = Data(apiKey.utf8)
-        var query = baseQuery()
+    private func saveSecret(_ secret: String, account: String) throws {
+        let data = Data(secret.utf8)
+        var query = baseQuery(account: account)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
             kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlock
@@ -61,14 +88,14 @@ struct KeychainService {
         }
     }
 
-    func deleteAPIKey() throws {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+    private func deleteSecret(account: String) throws {
+        let status = SecItemDelete(baseQuery(account: account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else {
             throw KeychainError.unhandledStatus(status)
         }
     }
 
-    private func baseQuery() -> [String: Any] {
+    private func baseQuery(account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,

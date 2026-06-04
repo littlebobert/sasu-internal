@@ -1,6 +1,11 @@
 import Foundation
 import OSLog
 
+enum AIRequestCredential {
+    case openAIAPIKey(String)
+    case backendAccessToken(String, baseURL: URL)
+}
+
 struct OpenAIClient {
     private static let logger = Logger(subsystem: "dev.sasu.Sasu", category: "OpenAIClient")
     private static let defaultSession: URLSession = {
@@ -18,7 +23,7 @@ struct OpenAIClient {
     }
 
     func askAboutScreenshot(
-        apiKey: String,
+        credential: AIRequestCredential,
         modelID: String,
         reasoningEffort: String,
         serviceTier: String,
@@ -47,7 +52,7 @@ struct OpenAIClient {
         )
 
         let text = try await sendResponsesRequest(
-            apiKey: apiKey,
+            credential: credential,
             requestBody: requestBody,
             logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))"
         )
@@ -56,7 +61,7 @@ struct OpenAIClient {
     }
 
     func translateClipboardText(
-        apiKey: String,
+        credential: AIRequestCredential,
         modelID: String,
         reasoningEffort: String,
         serviceTier: String,
@@ -81,35 +86,52 @@ struct OpenAIClient {
         )
 
         return try await sendResponsesRequest(
-            apiKey: apiKey,
+            credential: credential,
             requestBody: requestBody,
             logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)"
         )
     }
 
     private func sendResponsesRequest(
-        apiKey: String,
+        credential: AIRequestCredential,
         requestBody: ResponsesRequest,
         logSummary: String
     ) async throws -> String {
-        var request = URLRequest(url: endpoint)
+        let requestEndpoint: URL
+        let authorizationHeader: String
+        let destination: String
+        switch credential {
+        case .openAIAPIKey(let apiKey):
+            requestEndpoint = endpoint
+            authorizationHeader = "Bearer \(apiKey)"
+            destination = "OpenAI"
+        case .backendAccessToken(let accessToken, let baseURL):
+            requestEndpoint = baseURL.appendingPathComponent("v1/responses")
+            authorizationHeader = "Bearer \(accessToken)"
+            destination = "Sasu backend"
+        }
+
+        var request = URLRequest(url: requestEndpoint)
         request.httpMethod = "POST"
         request.timeoutInterval = 120
-        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue(authorizationHeader, forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONEncoder().encode(requestBody)
-        Self.logger.info("Sending OpenAI request. \(logSummary, privacy: .public), bodyBytes=\(request.httpBody?.count ?? 0)")
+        Self.logger.info("Sending AI request via \(destination, privacy: .public). \(logSummary, privacy: .public), bodyBytes=\(request.httpBody?.count ?? 0)")
 
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse
         }
-        Self.logger.info("OpenAI response received. status=\(httpResponse.statusCode), bytes=\(data.count)")
+        Self.logger.info("AI response received. destination=\(destination, privacy: .public), status=\(httpResponse.statusCode), bytes=\(data.count)")
 
         let decoder = JSONDecoder()
         if !(200..<300).contains(httpResponse.statusCode) {
             if let errorResponse = try? decoder.decode(OpenAIErrorResponse.self, from: data) {
                 throw OpenAIError.apiError(statusCode: httpResponse.statusCode, message: errorResponse.error.message)
+            }
+            if let errorResponse = try? decoder.decode(BackendErrorResponse.self, from: data) {
+                throw OpenAIError.apiError(statusCode: httpResponse.statusCode, message: errorResponse.detail)
             }
 
             let bodyPreview = String(data: data, encoding: .utf8)
