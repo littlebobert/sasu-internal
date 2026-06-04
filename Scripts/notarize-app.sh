@@ -36,7 +36,14 @@ xcrun stapler staple "$APP_DIR"
 codesign --verify --deep --strict --verbose=2 "$APP_DIR"
 spctl --assess --type execute --verbose=4 "$APP_DIR"
 
-ditto -c -k --keepParent "$APP_DIR" "$RELEASE_ZIP"
+ditto --noextattr --norsrc -c -k --keepParent "$APP_DIR" "$RELEASE_ZIP"
+
+VERIFY_DIR="$(mktemp -d "$ROOT_DIR/Build/release-verify.XXXXXX")"
+trap 'rm -rf "$VERIFY_DIR"' EXIT
+/usr/bin/unzip -q "$RELEASE_ZIP" -d "$VERIFY_DIR"
+codesign --verify --deep --strict --verbose=2 "$VERIFY_DIR/$APP_NAME.app"
+xcrun stapler validate "$VERIFY_DIR/$APP_NAME.app"
+spctl --assess --type execute --verbose=4 "$VERIFY_DIR/$APP_NAME.app"
 
 echo "Notarized app: $APP_DIR"
 echo "GitHub release artifact: $RELEASE_ZIP"
