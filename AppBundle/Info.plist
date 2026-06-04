@@ -16,6 +16,8 @@
 	<string>Sasu</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.9</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -27,10 +29,8 @@
 			</array>
 		</dict>
 	</array>
-	<key>CFBundleShortVersionString</key>
-	<string>0.1.8</string>
 	<key>CFBundleVersion</key>
-	<string>5</string>
+	<string>6</string>
 	<key>LSMinimumSystemVersion</key>
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
@@ -38,7 +38,7 @@
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SASUBackendBaseURL</key>
-	<string>https://sasu-backend.herokuapp.com</string>
+	<string>https://sasu-backend-f1fe990b2452.herokuapp.com</string>
 	<key>SUAllowsAutomaticUpdates</key>
 	<false/>
 	<key>SUAutomaticallyUpdate</key>

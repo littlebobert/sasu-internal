@@ -96,7 +96,7 @@ final class AppModel: ObservableObject {
         "gpt-5.5-high-fast"
     ]
     private static var defaultBackendBaseURL: String {
-        Bundle.main.object(forInfoDictionaryKey: "SASUBackendBaseURL") as? String ?? "https://sasu-backend.herokuapp.com"
+        Bundle.main.object(forInfoDictionaryKey: "SASUBackendBaseURL") as? String ?? "https://sasu-backend-f1fe990b2452.herokuapp.com"
     }
 
     private let defaults: UserDefaults
