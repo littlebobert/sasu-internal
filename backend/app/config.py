@@ -44,5 +44,5 @@ class Settings:
             allowed_models=_get_allowed_models(),
             request_max_bytes=_get_int("REQUEST_MAX_BYTES", 6_000_000),
             rate_limit_per_minute=_get_int("RATE_LIMIT_PER_MINUTE", 20),
-            invite_base_url=os.environ.get("INVITE_BASE_URL", "http://sasu.jp/#invite="),
+            invite_base_url=os.environ.get("INVITE_BASE_URL", "https://littlebobert.github.io/sasu-invite.html#invite="),
         )

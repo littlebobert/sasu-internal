@@ -26,7 +26,7 @@ python scripts/create_invite.py mom
 The command stores only a hash of the one-time invite code and prints a link like:
 
 ```text
-http://sasu.jp/#invite=sasu_inv_...
+https://littlebobert.github.io/sasu-invite.html#invite=sasu_inv_...
 ```
 
 If you lose the printed URL, create a new invite.
@@ -38,7 +38,7 @@ Create an app and add Heroku Postgres, then set config vars:
 ```bash
 heroku config:set OPENAI_API_KEY=sk-... --app <heroku-app>
 heroku config:set TOKEN_HASH_PEPPER="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" --app <heroku-app>
-heroku config:set INVITE_BASE_URL="http://sasu.jp/#invite=" --app <heroku-app>
+heroku config:set INVITE_BASE_URL="https://littlebobert.github.io/sasu-invite.html#invite=" --app <heroku-app>
 heroku config:set ALLOWED_MODELS="gpt-5.5" --app <heroku-app>
 ```
 

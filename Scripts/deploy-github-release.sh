@@ -17,6 +17,7 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$ROOT
 BUILD_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$ROOT_DIR/AppBundle/Info.plist")"
 TAG="${RELEASE_TAG:-$VERSION}"
 LANDING_PAGE="${LANDING_PAGE:-$ROOT_DIR/../littlebobert.github.io/sasu.html}"
+INVITE_PAGE="${INVITE_PAGE:-$(dirname "$LANDING_PAGE")/sasu-invite.html}"
 APPCAST_PATH="${APPCAST_PATH:-$(dirname "$LANDING_PAGE")/appcast.xml}"
 APPCAST_DOWNLOAD_URL_PREFIX="${APPCAST_DOWNLOAD_URL_PREFIX:-https://github.com/$REPO/releases/download/$TAG}"
 APPCAST_PRODUCT_LINK="${APPCAST_PRODUCT_LINK:-http://sasu.jp}"
@@ -51,6 +52,7 @@ Environment:
   RELEASE_ENV_FILE            Optional env file to source. Default: $RELEASE_ENV_FILE
   GITHUB_REPO                 GitHub repo to create the release in. Default: $REPO
   LANDING_PAGE                Path to sasu.html. Default: $LANDING_PAGE
+  INVITE_PAGE                 Path to sasu-invite.html. Default: $INVITE_PAGE
   APPCAST_PATH                Path to appcast.xml. Default: $APPCAST_PATH
   APPCAST_DOWNLOAD_URL_PREFIX Download URL prefix for appcast updates.
                                Default: $APPCAST_DOWNLOAD_URL_PREFIX
@@ -235,6 +237,11 @@ if [[ ! -f "$LANDING_PAGE" ]]; then
   exit 1
 fi
 
+if [[ ! -f "$INVITE_PAGE" ]]; then
+  echo "error: invite page not found: $INVITE_PAGE" >&2
+  exit 1
+fi
+
 if [[ ! -x "$SPARKLE_GENERATE_APPCAST" ]]; then
   echo "error: Sparkle generate_appcast not found: $SPARKLE_GENERATE_APPCAST" >&2
   echo "Run 'swift package resolve' and try again." >&2
@@ -242,7 +249,14 @@ if [[ ! -x "$SPARKLE_GENERATE_APPCAST" ]]; then
 fi
 
 LANDING_REPO="$(git -C "$(dirname "$LANDING_PAGE")" rev-parse --show-toplevel)"
+INVITE_REPO="$(git -C "$(dirname "$INVITE_PAGE")" rev-parse --show-toplevel)"
 APPCAST_REPO="$(git -C "$(dirname "$APPCAST_PATH")" rev-parse --show-toplevel)"
+if [[ "$INVITE_REPO" != "$LANDING_REPO" ]]; then
+  echo "error: INVITE_PAGE must live in the same git repo as LANDING_PAGE." >&2
+  echo "LANDING_PAGE repo: $LANDING_REPO" >&2
+  echo "INVITE_PAGE repo: $INVITE_REPO" >&2
+  exit 1
+fi
 if [[ "$APPCAST_REPO" != "$LANDING_REPO" ]]; then
   echo "error: APPCAST_PATH must live in the same git repo as LANDING_PAGE." >&2
   echo "LANDING_PAGE repo: $LANDING_REPO" >&2
@@ -251,6 +265,14 @@ if [[ "$APPCAST_REPO" != "$LANDING_REPO" ]]; then
 fi
 LANDING_RELATIVE_PATH="$(
   python3 - "$LANDING_REPO" "$LANDING_PAGE" <<'PY'
+import os
+import sys
+
+print(os.path.relpath(sys.argv[2], sys.argv[1]))
+PY
+)"
+INVITE_RELATIVE_PATH="$(
+  python3 - "$LANDING_REPO" "$INVITE_PAGE" <<'PY'
 import os
 import sys
 
@@ -612,6 +634,43 @@ else:
 open(path, "w").write(text)
 PY
 
+echo "Updating invite page: $INVITE_PAGE"
+python3 - "$INVITE_PAGE" "$VERSION" <<'PY'
+import re
+import sys
+
+path, version = sys.argv[1:3]
+text = open(path).read()
+
+text = re.sub(
+    r'https://github\.com/littlebobert/sasu/releases/download/[^/]+/Sasu-[^"/]+-mac\.zip',
+    f'https://github.com/littlebobert/sasu/releases/download/{version}/Sasu-{version}-mac.zip',
+    text,
+)
+
+download_version_re = re.compile(
+    r'<span\s+class="download-version"\s+'
+    r'data-label-en="\(version [^"]+\)"\s+'
+    r'data-label-ja="（バージョン [^"]+）"\s*'
+    r'>\(version [^<]+\)</span>',
+    re.S,
+)
+if not download_version_re.search(text):
+    raise SystemExit(f"Could not find download-version span in {path}")
+text = download_version_re.sub(
+    '<span\n'
+    '            class="download-version"\n'
+    f'            data-label-en="(version {version})"\n'
+    f'            data-label-ja="（バージョン {version}）"\n'
+    '          '
+    f'>(version {version})</span>',
+    text,
+    count=1,
+)
+
+open(path, "w").write(text)
+PY
+
 echo "Notarizing app..."
 "$ROOT_DIR/Scripts/notarize-app.sh"
 
@@ -658,12 +717,12 @@ gh release create "$TAG" "$release_zip" \
   --notes-file "$NOTES_MD"
 
 echo "Committing and pushing landing page/appcast..."
-landing_changes="$(git -C "$LANDING_REPO" status --porcelain -- "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH")"
+landing_changes="$(git -C "$LANDING_REPO" status --porcelain -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH")"
 if [[ -z "$landing_changes" ]]; then
-  echo "Landing page and appcast already up to date."
+  echo "Landing page, invite page, and appcast already up to date."
 else
-  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
-  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
+  git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
+  git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
   git -C "$LANDING_REPO" push
 fi
 
@@ -671,3 +730,4 @@ echo "Created GitHub release: $TAG"
 echo "Release artifact: $release_zip"
 echo "Updated appcast: $APPCAST_PATH"
 echo "Updated landing page: $LANDING_PAGE"
+echo "Updated invite page: $INVITE_PAGE"

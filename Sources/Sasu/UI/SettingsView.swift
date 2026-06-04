@@ -77,12 +77,6 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("Backend URL")
-                    .font(.caption.bold())
-                TextField("https://sasu-backend.herokuapp.com", text: $appModel.backendBaseURLInput)
-                    .textFieldStyle(.roundedBorder)
-            }
         }
     }
 
@@ -91,11 +85,7 @@ struct SettingsView: View {
             return "No invite access saved"
         }
 
-        if appModel.backendAccessLabel.isEmpty {
-            return "Invite access saved in Keychain"
-        }
-
-        return "Invite access saved for \(appModel.backendAccessLabel)"
+        return "Invite access saved in Keychain"
     }
 
     private var canRedeemInvite: Bool {
