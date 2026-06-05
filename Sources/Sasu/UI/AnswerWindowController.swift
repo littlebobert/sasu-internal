@@ -244,7 +244,10 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             }
         }
 
-        onboardingObservation = appModel.$isFirstLaunchOnboardingVisible
+        onboardingObservation = Publishers.Merge(
+            appModel.$isFirstLaunchOnboardingVisible.map { _ in () },
+            appModel.$isOnboardingGuidanceVisible.map { _ in () }
+        )
             .sink { [weak self, weak appModel] _ in
                 DispatchQueue.main.async {
                     guard let appModel else { return }
@@ -258,10 +261,10 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
 
         window.setFrameAutosaveName("")
         window.contentView?.layoutSubtreeIfNeeded()
-        let fittingSize = window.contentView?.fittingSize ?? NSSize(width: 620, height: 360)
+        let fittingSize = window.contentView?.fittingSize ?? NSSize(width: 620, height: 400)
         let contentSize = NSSize(
             width: min(max(fittingSize.width, 620), 760),
-            height: min(max(fittingSize.height, 340), 520)
+            height: min(max(fittingSize.height, 390), 560)
         )
         var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
         frame.origin.x = window.frame.midX - frame.width / 2

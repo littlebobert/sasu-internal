@@ -16,7 +16,7 @@ struct AnswerPanelView: View {
             }
         }
         .padding(appModel.isFirstLaunchOnboardingVisible ? 14 : 18)
-        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 300 : 420)
+        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 340 : 420)
     }
 
     private var header: some View {
@@ -93,18 +93,20 @@ struct AnswerPanelView: View {
                 Text("Sasuを始める")
                     .font(.body.bold())
                     .frame(maxWidth: .infinity)
+                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                    .foregroundStyle(.white)
+                    .background(Color.green)
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                    .contentShape(RoundedRectangle(cornerRadius: 10))
             }
             .buttonStyle(.plain)
-            .padding(.vertical, 8)
-            .padding(.horizontal, 14)
-            .foregroundStyle(.white)
-            .background(Color.green)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
             .overlay {
                 if appModel.isOnboardingGuidanceVisible {
                     RoundedRectangle(cornerRadius: 12)
                         .stroke(Color.blue, lineWidth: 4)
                         .padding(-6)
+                        .allowsHitTesting(false)
                 }
             }
             .shadow(color: appModel.isOnboardingGuidanceVisible ? Color.blue.opacity(0.35) : .clear, radius: 8)
