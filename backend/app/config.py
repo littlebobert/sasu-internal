@@ -16,6 +16,11 @@ def _get_allowed_models() -> set[str]:
     return {model.strip() for model in raw_value.split(",") if model.strip()}
 
 
+def _get_csv_set(name: str) -> set[str]:
+    raw_value = os.environ.get(name, "")
+    return {value.strip().lower() for value in raw_value.split(",") if value.strip()}
+
+
 def _database_url() -> str:
     url = os.environ.get("DATABASE_URL", "sqlite:///./sasu-backend.db")
     if url.startswith("postgres://"):
@@ -33,6 +38,10 @@ class Settings:
     allowed_models: set[str]
     request_max_bytes: int
     rate_limit_per_minute: int
+    monthly_usage_limit_per_token: int
+    image_request_usage_units: int
+    text_request_usage_units: int
+    unlimited_token_labels: set[str]
     invite_base_url: str
 
     @classmethod
@@ -44,5 +53,9 @@ class Settings:
             allowed_models=_get_allowed_models(),
             request_max_bytes=_get_int("REQUEST_MAX_BYTES", 6_000_000),
             rate_limit_per_minute=_get_int("RATE_LIMIT_PER_MINUTE", 20),
+            monthly_usage_limit_per_token=_get_int("MONTHLY_USAGE_LIMIT_PER_TOKEN", 600),
+            image_request_usage_units=_get_int("IMAGE_REQUEST_USAGE_UNITS", 10),
+            text_request_usage_units=_get_int("TEXT_REQUEST_USAGE_UNITS", 1),
+            unlimited_token_labels=_get_csv_set("UNLIMITED_TOKEN_LABELS"),
             invite_base_url=os.environ.get("INVITE_BASE_URL", "https://littlebobert.github.io/sasu-invite.html#invite="),
         )

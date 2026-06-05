@@ -411,9 +411,9 @@ final class AppModel: ObservableObject {
             backendAccessLabel = ""
             defaults.removeObject(forKey: Self.backendAccessLabelKey)
             errorMessage = nil
-            statusMessage = "Invite access cleared."
+            statusMessage = "Sasu backend access cleared."
         } catch {
-            errorMessage = "Could not clear invite access: \(error.localizedDescription)"
+            errorMessage = "Could not clear Sasu backend access: \(error.localizedDescription)"
         }
     }
 
@@ -449,16 +449,16 @@ final class AppModel: ObservableObject {
     }
 
     func handleOpenedURL(_ url: URL) {
-        guard let inviteCode = Self.inviteCode(from: url) else {
-            errorMessage = "Sasu could not read the invite link."
+        if let inviteCode = Self.inviteCode(from: url) {
+            inviteCodeInput = inviteCode
+            accessMode = .invite
             showSettingsWindowWithStandardOrdering()
+            redeemInviteCode(inviteCode)
             return
         }
 
-        inviteCodeInput = inviteCode
-        accessMode = .invite
+        errorMessage = "Sasu could not read this link."
         showSettingsWindowWithStandardOrdering()
-        redeemInviteCode(inviteCode)
     }
 
     private func redeemInviteCode(_ rawCode: String) {

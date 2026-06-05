@@ -4,6 +4,7 @@ import json
 from contextlib import asynccontextmanager
 from collections.abc import Iterator
 from datetime import datetime, timedelta, timezone
+from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
@@ -12,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from .config import Settings
 from .db import Database
-from .models import AppToken, Invite, utc_now
+from .models import AppToken, Invite, TokenMonthlyUsage, utc_now
 from .schemas import RedeemInviteRequest, RedeemInviteResponse
 from .security import hash_secret, make_app_token
 
@@ -43,7 +44,7 @@ def _require_openai_key(settings: Settings) -> None:
         )
 
 
-def _is_expired(expires_at: datetime | None) -> bool:
+def _is_expired(expires_at: Optional[datetime]) -> bool:
     if expires_at is None:
         return False
     if expires_at.tzinfo is None:
@@ -51,7 +52,7 @@ def _is_expired(expires_at: datetime | None) -> bool:
     return expires_at <= utc_now()
 
 
-def _bearer_token(authorization: str | None) -> str:
+def _bearer_token(authorization: Optional[str]) -> str:
     if not authorization:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing access token.")
     scheme, _, token = authorization.partition(" ")
@@ -61,7 +62,7 @@ def _bearer_token(authorization: str | None) -> str:
 
 
 def _require_app_token(
-    authorization: str | None = Header(default=None),
+    authorization: Optional[str] = Header(default=None),
     settings: Settings = Depends(get_settings),
     db: Session = Depends(get_db),
 ) -> AppToken:
@@ -79,6 +80,66 @@ def _require_app_token(
     db.commit()
     db.refresh(app_token)
     return app_token
+
+
+def _current_month_key(now: datetime) -> str:
+    return now.strftime("%Y-%m")
+
+
+def _next_month_start(now: datetime) -> datetime:
+    year = now.year + (1 if now.month == 12 else 0)
+    month = 1 if now.month == 12 else now.month + 1
+    return datetime(year, month, 1, tzinfo=timezone.utc)
+
+
+def _enforce_monthly_limit(app_token: AppToken, settings: Settings, db: Session, usage_units: int) -> None:
+    if settings.monthly_usage_limit_per_token <= 0:
+        return
+
+    if app_token.label.strip().lower() in settings.unlimited_token_labels:
+        return
+
+    now = utc_now()
+    month_key = _current_month_key(now)
+    usage = db.scalar(
+        select(TokenMonthlyUsage).where(
+            TokenMonthlyUsage.app_token_id == app_token.id,
+            TokenMonthlyUsage.month_key == month_key,
+        )
+    )
+
+    if usage is None:
+        usage = TokenMonthlyUsage(app_token_id=app_token.id, month_key=month_key)
+        db.add(usage)
+        db.flush()
+
+    if usage.usage_units + usage_units > settings.monthly_usage_limit_per_token:
+        reset_date = _next_month_start(now).date().isoformat()
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=f"Monthly hosted access limit reached. Your limit resets on {reset_date}.",
+        )
+
+    usage.usage_units += usage_units
+    usage.updated_at = now
+
+
+def _contains_input_image(value: object) -> bool:
+    if isinstance(value, dict):
+        if value.get("type") == "input_image" or "image_url" in value:
+            return True
+        return any(_contains_input_image(child) for child in value.values())
+
+    if isinstance(value, list):
+        return any(_contains_input_image(child) for child in value)
+
+    return False
+
+
+def _request_usage_units(request_body: dict, settings: Settings) -> int:
+    if _contains_input_image(request_body):
+        return max(settings.image_request_usage_units, 0)
+    return max(settings.text_request_usage_units, 0)
 
 
 def _enforce_rate_limit(app_token: AppToken, settings: Settings) -> None:
@@ -130,7 +191,7 @@ async def _proxy_to_openai(request_body: dict, settings: Settings) -> Response:
     )
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Optional[Settings] = None) -> FastAPI:
     settings = settings or Settings.from_env()
     database = Database(settings.database_url)
 
@@ -181,8 +242,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.post("/v1/responses")
     async def responses_proxy(
         request: Request,
-        _: AppToken = Depends(_require_app_token),
+        app_token: AppToken = Depends(_require_app_token),
         settings: Settings = Depends(get_settings),
+        db: Session = Depends(get_db),
     ) -> Response:
         body = await request.body()
         if len(body) > settings.request_max_bytes:
@@ -197,6 +259,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Request body must be a JSON object.")
 
         _validate_model(request_body, settings)
+        _enforce_monthly_limit(app_token, settings, db, _request_usage_units(request_body, settings))
+        db.commit()
         return await _proxy_to_openai(request_body, settings)
 
     return app

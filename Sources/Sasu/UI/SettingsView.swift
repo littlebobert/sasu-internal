@@ -77,6 +77,11 @@ struct SettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
 
+            Text("Hosted invite access has a monthly usage limit to keep the beta sustainable. Text-only translations use less of the limit than screenshot requests.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+
         }
     }
 
