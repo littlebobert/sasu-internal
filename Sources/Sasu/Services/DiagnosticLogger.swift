@@ -52,13 +52,13 @@ enum DiagnosticLogger {
         try queue.sync {
             let directory = try logsDirectory
             let reportURL = directory.appendingPathComponent("Sasu-Bug-Report.txt", isDirectory: false)
-            let report = bugReportText()
+            let report = makeBugReportText()
             try report.write(to: reportURL, atomically: true, encoding: .utf8)
             return reportURL
         }
     }
 
-    private static func bugReportText() -> String {
+    static func makeBugReportText() -> String {
         let bundle = Bundle.main
         let version = bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown"
         let build = bundle.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown"

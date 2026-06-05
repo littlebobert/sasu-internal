@@ -20,7 +20,7 @@ final class AboutWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 290),
+            contentRect: NSRect(x: 0, y: 0, width: 300, height: 245),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -52,10 +52,10 @@ private struct AboutView: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) {
+        VStack(spacing: 5) {
             Image(nsImage: appIcon)
                 .resizable()
-                .frame(width: 64, height: 64)
+                .frame(width: 60, height: 60)
 
             VStack(spacing: 4) {
                 Text("Sasu")
@@ -74,7 +74,7 @@ private struct AboutView: View {
                 reportBug()
             }
             .buttonStyle(.bordered)
-            .padding(.top, 8)
+            .padding(.top, 5)
 
             if let reportError {
                 Text(reportError)
@@ -84,14 +84,15 @@ private struct AboutView: View {
                     .lineLimit(3)
             }
         }
-        .padding(12)
-        .frame(width: 320, height: 290)
+        .padding(10)
+        .frame(width: 300, height: 245)
     }
 
     private func reportBug() {
         do {
             DiagnosticLogger.log("User opened bug report email from About window.", category: "BugReport")
             let reportURL = try DiagnosticLogger.makeBugReport()
+            let reportText = DiagnosticLogger.makeBugReportText()
             guard let service = NSSharingService(named: .composeEmail) else {
                 revealReport(reportURL)
                 reportError = "Could not open Mail. The report file was shown in Finder."
@@ -104,12 +105,14 @@ private struct AboutView: View {
                 """
                 Hi Justin,
 
-                I ran into a Sasu issue. I attached the diagnostic report.
+                I ran into a Sasu issue. The diagnostic report is included below.
 
                 What happened:
 
+                ---
+
+                \(reportText)
                 """,
-                reportURL
             ])
             reportError = nil
         } catch {
