@@ -35,6 +35,7 @@ struct SasuApp: App {
     private let aboutWindowController = AboutWindowController()
 
     init() {
+        DiagnosticLogger.log("App init. version=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "unknown") build=\(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "unknown")", category: "Lifecycle")
         let appModel = AppModel()
         _appModel = StateObject(wrappedValue: appModel)
         _autoUpdateService = StateObject(wrappedValue: AutoUpdateService())
@@ -63,6 +64,7 @@ struct SasuApp: App {
                 Divider()
 
                 Button("Check for Updates…") {
+                    appModel.prepareForUpdatePresentation()
                     autoUpdateService.checkForUpdates()
                 }
                 .disabled(!autoUpdateService.canCheckForUpdates)

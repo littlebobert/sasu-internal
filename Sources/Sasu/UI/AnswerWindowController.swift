@@ -7,6 +7,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     private var window: NSPanel?
     private weak var appModel: AppModel?
     private var appModelObservation: AnyCancellable?
+    private var onboardingObservation: AnyCancellable?
     private var isFloatingEnabled = true
 
     func show(appModel: AppModel, activate: Bool = true) {
@@ -18,6 +19,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         }
 
         window?.level = currentWindowLevel
+        resizeForOnboardingIfNeeded(appModel: appModel)
         guard activate else { return }
 
         window?.makeKeyAndOrderFront(nil)
@@ -27,6 +29,14 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     func setFloatingEnabled(_ isEnabled: Bool) {
         isFloatingEnabled = isEnabled
         window?.level = currentWindowLevel
+    }
+
+    func temporarilyDisableFloating(for duration: TimeInterval = 2.0) {
+        setFloatingEnabled(false)
+        DispatchQueue.main.asyncAfter(deadline: .now() + duration) { [weak self] in
+            guard let self else { return }
+            self.setFloatingEnabled(true)
+        }
     }
 
     func hide() {
@@ -143,7 +153,9 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         panel.isExcludedFromWindowsMenu = false
         panel.isReleasedWhenClosed = false
-        panel.setFrameAutosaveName("SasuAnswerWindow")
+        if !appModel.isFirstLaunchOnboardingVisible {
+            panel.setFrameAutosaveName("SasuAnswerWindow")
+        }
         panel.toolbar = makeToolbar()
         panel.toolbar?.displayMode = .labelOnly
         panel.toolbar?.sizeMode = .regular
@@ -231,6 +243,40 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 self?.window?.toolbar?.validateVisibleItems()
             }
         }
+
+        onboardingObservation = appModel.$isFirstLaunchOnboardingVisible
+            .sink { [weak self, weak appModel] _ in
+                DispatchQueue.main.async {
+                    guard let appModel else { return }
+                    self?.resizeForOnboardingIfNeeded(appModel: appModel)
+                }
+            }
+    }
+
+    private func resizeForOnboardingIfNeeded(appModel: AppModel) {
+        guard appModel.isFirstLaunchOnboardingVisible, let window else { return }
+
+        window.setFrameAutosaveName("")
+        window.contentView?.layoutSubtreeIfNeeded()
+        let fittingSize = window.contentView?.fittingSize ?? NSSize(width: 620, height: 360)
+        let contentSize = NSSize(
+            width: min(max(fittingSize.width, 620), 760),
+            height: min(max(fittingSize.height, 340), 520)
+        )
+        var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
+        frame.origin.x = window.frame.midX - frame.width / 2
+        frame.origin.y = window.frame.maxY - frame.height
+
+        if let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
+            if frame.minY < visibleFrame.minY + 20 {
+                frame.origin.y = visibleFrame.midY - frame.height / 2
+            }
+            if frame.maxY > visibleFrame.maxY - 20 {
+                frame.origin.y = visibleFrame.maxY - frame.height - 20
+            }
+        }
+
+        window.setFrame(frame, display: true, animate: false)
     }
 
     @objc private func captureScreen() {

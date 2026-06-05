@@ -204,6 +204,7 @@ final class AppModel: ObservableObject {
     }
 
     func start() {
+        DiagnosticLogger.log("AppModel start. screenRecording=\(CGPreflightScreenCaptureAccess()) accessMode=\(accessMode.rawValue) hasInviteToken=\(hasStoredBackendAccessToken) hasAPIKey=\(hasStoredAPIKey)", category: "Lifecycle")
         if hotkeyManager == nil {
             updateHotkeyRegistration()
         }
@@ -273,6 +274,7 @@ final class AppModel: ObservableObject {
     }
 
     private func showFirstLaunchOnboarding() {
+        DiagnosticLogger.log("Showing first launch onboarding.", category: "Onboarding")
         isFirstLaunchOnboardingVisible = true
         isOnboardingGuidanceVisible = false
         errorMessage = nil
@@ -292,6 +294,7 @@ final class AppModel: ObservableObject {
     }
 
     func completeFirstLaunchOnboarding() {
+        DiagnosticLogger.log("First launch onboarding completed. screenRecording=\(CGPreflightScreenCaptureAccess())", category: "Onboarding")
         defaults.set(true, forKey: Self.hasCompletedFirstLaunchOnboardingKey)
         isFirstLaunchOnboardingVisible = false
         isOnboardingGuidanceVisible = false
@@ -335,6 +338,11 @@ final class AppModel: ObservableObject {
 
     func endAboutWindowPresentation() {
         endStandardWindowPresentation(Self.aboutWindowPresentationID)
+    }
+
+    func prepareForUpdatePresentation() {
+        DiagnosticLogger.log("Preparing for update presentation.", category: "Updater")
+        answerWindowController.temporarilyDisableFloating()
     }
 
     private func showSettingsWindowWithStandardOrdering() {
@@ -850,6 +858,7 @@ final class AppModel: ObservableObject {
         guard !CGPreflightScreenCaptureAccess() else { return }
 
         hasPresentedScreenRecordingPrimer = true
+        DiagnosticLogger.log("Presenting Screen Recording primer.", category: "Permissions")
         Task { @MainActor in
             // Let the Settings window finish appearing before presenting the modal primer.
             try? await Task.sleep(nanoseconds: 300_000_000)
@@ -872,14 +881,17 @@ final class AppModel: ObservableObject {
 
             switch alert.runModal() {
             case .alertFirstButtonReturn:
+                DiagnosticLogger.log("User chose Accept Screen Recording.", category: "Permissions")
                 requestScreenRecordingPermission()
             default:
+                DiagnosticLogger.log("User chose Not Yet for Screen Recording.", category: "Permissions")
                 showFirstLaunchOnboarding()
             }
         }
     }
 
     private func requestScreenRecordingPermission() {
+        DiagnosticLogger.log("Requesting Screen Recording permission.", category: "Permissions")
         noteWindowsToRestoreAfterScreenRecordingPrompt()
         hideWindowsForSystemPermissionPrompt()
 
@@ -887,9 +899,11 @@ final class AppModel: ObservableObject {
         _ = CGRequestScreenCaptureAccess()
 
         if CGPreflightScreenCaptureAccess() {
+            DiagnosticLogger.log("Screen Recording permission granted immediately.", category: "Permissions")
             statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
             restoreWindowsAfterScreenRecordingPrompt()
         } else {
+            DiagnosticLogger.log("Screen Recording permission not granted after request.", category: "Permissions")
             statusMessage = "Approve the macOS Screen Recording prompt. If you do not see it, use Open Screen Recording Settings."
         }
     }
