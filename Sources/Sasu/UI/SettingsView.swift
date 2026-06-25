@@ -308,6 +308,24 @@ struct SettingsView: View {
                                 appModel.requestAccessibilityAccess()
                             }
                         }
+
+                        if appModel.shouldOfferAccessibilityRelaunch {
+                            Button("Relaunch Sasu") {
+                                appModel.relaunchSasu()
+                            }
+                        }
+                    }
+
+                    if appModel.shouldOfferAccessibilityRelaunch {
+                        Text("If you enabled Sasu in Accessibility settings, quit and reopen Sasu before Translate Selection works.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    } else {
+                        Text("After enabling Accessibility for Sasu, macOS usually requires quitting and reopening Sasu before Translate Selection works.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
 
                     Button("Reset Translate Selection Hotkey") {

@@ -79,6 +79,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then press the hotkey or use Capture Screen."
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
+    @Published private(set) var shouldOfferAccessibilityRelaunch = false
+    @Published private(set) var hasAccessibilityAccess = false
     @Published private(set) var isRequestInFlight = false
     @Published private(set) var isScreenshotPrepared = false
     @Published private(set) var screenshotPreviewImage: NSImage?
@@ -146,6 +148,7 @@ final class AppModel: ObservableObject {
     private var shouldRestoreSettingsAfterScreenRecordingPrompt = false
     private var appActivationObserver: NSObjectProtocol?
     private var attentionRequestID: Int?
+    private var isAwaitingAccessibilityGrant = false
     private var standardWindowPresentationIDs = Set<String>()
 
     init(
@@ -246,10 +249,22 @@ final class AppModel: ObservableObject {
         }
 
         registerAppActivationObserverIfNeeded()
+        refreshAccessibilityPermissionState()
     }
 
-    var hasAccessibilityAccess: Bool {
-        selectionAutomationService.hasAccessibilityAccess()
+    private func refreshAccessibilityPermissionState() {
+        hasAccessibilityAccess = selectionAutomationService.hasAccessibilityAccess()
+
+        guard hasAccessibilityAccess else {
+            if isAwaitingAccessibilityGrant {
+                shouldOfferAccessibilityRelaunch = true
+                statusMessage = "If you enabled Sasu in Accessibility settings, relaunch Sasu for Translate Selection to work."
+            }
+            return
+        }
+
+        isAwaitingAccessibilityGrant = false
+        shouldOfferAccessibilityRelaunch = false
     }
 
     func showLaunchWindowIfNeeded() {
@@ -847,6 +862,7 @@ final class AppModel: ObservableObject {
                 self?.cancelUserAttentionRequestIfNeeded()
                 self?.restoreHighlightWindowsAfterUserReturn()
                 self?.restoreWindowsAfterScreenRecordingPermissionIfNeeded()
+                self?.refreshAccessibilityPermissionState()
             }
         }
     }
@@ -923,12 +939,15 @@ final class AppModel: ObservableObject {
     }
 
     func openAccessibilitySettings() {
+        isAwaitingAccessibilityGrant = true
+        shouldOfferAccessibilityRelaunch = false
+
         let urls = [
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"),
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
         ].compactMap { $0 }
 
-        statusMessage = "Opened Accessibility settings. Enable Sasu, then try Translate Selection again."
+        statusMessage = "Opened Accessibility settings. Enable Sasu, then relaunch Sasu."
 
         for url in urls where Self.openSystemSettings(url: url) {
             Task { @MainActor in
@@ -946,8 +965,11 @@ final class AppModel: ObservableObject {
     }
 
     func requestAccessibilityAccess() {
+        isAwaitingAccessibilityGrant = true
+        shouldOfferAccessibilityRelaunch = false
         selectionAutomationService.requestAccessibilityAccess()
-        statusMessage = "Approve the macOS Accessibility prompt, or enable Sasu in System Settings."
+        statusMessage = "Approve the macOS Accessibility prompt, or enable Sasu in System Settings, then relaunch Sasu."
+        refreshAccessibilityPermissionState()
     }
 
     private func presentScreenRecordingPrimerIfNeeded() {
@@ -1046,7 +1068,7 @@ final class AppModel: ObservableObject {
     func relaunchSasu() {
         let bundleURL = Bundle.main.bundleURL
         guard bundleURL.pathExtension == "app" else {
-            errorMessage = "Quit this process and launch Sasu from Build/Sasu.app so macOS applies Screen Recording permission to the app bundle."
+            errorMessage = "Quit this process and launch Sasu from Build/Sasu.app so macOS applies permission changes to the app bundle."
             return
         }
 
@@ -1275,6 +1297,8 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
 
             guard selectionAutomationService.hasAccessibilityAccess() else {
+                isAwaitingAccessibilityGrant = true
+                shouldOfferAccessibilityRelaunch = true
                 selectionAutomationService.requestAccessibilityAccess()
                 throw SelectionAutomationError.accessibilityRequired
             }
