@@ -1,13 +1,12 @@
 import AppKit
-import SwiftUI
 
 @MainActor
 final class CursorProgressOverlayController {
     private var panel: NSPanel?
     private var trackingTimer: Timer?
 
-    private let panelSize = NSSize(width: 34, height: 34)
-    private let cursorOffset = NSPoint(x: 18, y: -22)
+    private let panelSize = NSSize(width: 22, height: 22)
+    private let cursorOffset = NSPoint(x: 16, y: -18)
 
     func show() {
         if panel == nil {
@@ -55,7 +54,7 @@ final class CursorProgressOverlayController {
         panel.level = .screenSaver
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
         panel.isReleasedWhenClosed = false
-        panel.contentView = NSHostingView(rootView: CursorProgressIndicatorView())
+        panel.contentView = CursorProgressContentView(frame: NSRect(origin: .zero, size: panelSize))
         return panel
     }
 
@@ -93,17 +92,33 @@ final class CursorProgressOverlayController {
     }
 }
 
-private struct CursorProgressIndicatorView: View {
-    var body: some View {
-        ProgressView()
-            .progressViewStyle(.circular)
-            .controlSize(.small)
-            .frame(width: 16, height: 16)
-            .padding(9)
-            .background {
-                Circle()
-                    .fill(.regularMaterial)
-                    .shadow(color: .black.opacity(0.2), radius: 4, y: 1)
-            }
+private final class CursorProgressContentView: NSView {
+    private let spinner = NSProgressIndicator()
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+
+        spinner.style = .spinning
+        spinner.controlSize = .small
+        spinner.isDisplayedWhenStopped = true
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(spinner)
+
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor)
+        ])
+
+        spinner.startAnimation(nil)
     }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override var isOpaque: Bool { false }
 }
