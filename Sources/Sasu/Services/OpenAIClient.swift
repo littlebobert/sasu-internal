@@ -239,8 +239,9 @@ struct OpenAIClient {
         var instructions = [
             "- Translate the source text into natural \(direction.targetLanguage).",
             "- The text is usually in \(direction.expectedSourceLanguage), but translate appropriately if it is in another language.",
-            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful.",
-            "- \(direction.alreadyInTargetInstruction)"
+            "- \(direction.alreadyInTargetInstruction)",
+            "- Never repeat the source text verbatim unless every word is already in \(direction.targetLanguage).",
+            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful."
         ]
 
         if forSelectionReplacement {

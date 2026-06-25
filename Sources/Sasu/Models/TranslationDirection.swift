@@ -14,14 +14,14 @@ struct TranslationDirection {
             return TranslationDirection(
                 targetLanguage: "English",
                 expectedSourceLanguage: "Japanese",
-                alreadyInTargetInstruction: "If the source text is already natural English, return it unchanged."
+                alreadyInTargetInstruction: "If the source text is in English instead of Japanese, translate it into Japanese."
             )
         }
 
         return TranslationDirection(
             targetLanguage: "Japanese",
             expectedSourceLanguage: "English",
-            alreadyInTargetInstruction: "If the source text is already natural Japanese, return it unchanged."
+            alreadyInTargetInstruction: "If the source text is in Japanese instead of English, translate it into English."
         )
     }
 

@@ -150,6 +150,7 @@ final class AppModel: ObservableObject {
     private var appActivationObserver: NSObjectProtocol?
     private var attentionRequestID: Int?
     private var isAwaitingAccessibilityGrant = false
+    private var isUpdatePresentationActive = false
     private var standardWindowPresentationIDs = Set<String>()
 
     init(
@@ -421,7 +422,17 @@ final class AppModel: ObservableObject {
 
     func prepareForUpdatePresentation() {
         DiagnosticLogger.log("Preparing for update presentation.", category: "Updater")
-        answerWindowController.temporarilyDisableFloating()
+        beginUpdatePresentation()
+    }
+
+    func beginUpdatePresentation() {
+        isUpdatePresentationActive = true
+        applyAnswerWindowFloatingPolicy()
+    }
+
+    func endUpdatePresentation() {
+        isUpdatePresentationActive = false
+        applyAnswerWindowFloatingPolicy()
     }
 
     private func showSettingsWindowWithStandardOrdering() {
@@ -433,14 +444,17 @@ final class AppModel: ObservableObject {
 
     private func beginStandardWindowPresentation(_ identifier: String) {
         standardWindowPresentationIDs.insert(identifier)
-        answerWindowController.setFloatingEnabled(false)
+        applyAnswerWindowFloatingPolicy()
     }
 
     private func endStandardWindowPresentation(_ identifier: String) {
         standardWindowPresentationIDs.remove(identifier)
-        if standardWindowPresentationIDs.isEmpty {
-            answerWindowController.setFloatingEnabled(true)
-        }
+        applyAnswerWindowFloatingPolicy()
+    }
+
+    private func applyAnswerWindowFloatingPolicy() {
+        let shouldFloat = standardWindowPresentationIDs.isEmpty && !isUpdatePresentationActive
+        answerWindowController.setFloatingEnabled(shouldFloat)
     }
 
     func saveWindowStateForNextLaunch() {
