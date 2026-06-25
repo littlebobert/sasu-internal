@@ -2,19 +2,35 @@ import CoreGraphics
 import Foundation
 
 enum ScreenRecordingPermissionStore {
-    private static let hasRequestedAccessKey = "hasRequestedScreenRecordingAccess"
+    private static let hasStartedSetupKey = "hasStartedScreenRecordingSetup"
+    private static let legacyHasRequestedAccessKey = "hasRequestedScreenRecordingAccess"
+    private static let legacyHasPresentedPrimerKey = "hasPresentedScreenRecordingPrimer"
     private static let hasConfirmedGrantKey = "screenRecordingPermissionGranted"
 
-    static var hasRequestedAccess: Bool {
-        UserDefaults.standard.bool(forKey: hasRequestedAccessKey)
+    static var hasStartedSetup: Bool {
+        let defaults = UserDefaults.standard
+        if defaults.bool(forKey: hasStartedSetupKey) {
+            return true
+        }
+
+        if defaults.bool(forKey: legacyHasRequestedAccessKey)
+            || defaults.bool(forKey: legacyHasPresentedPrimerKey) {
+            return true
+        }
+
+        return false
     }
 
     static var hasConfirmedGrant: Bool {
         UserDefaults.standard.bool(forKey: hasConfirmedGrantKey)
     }
 
+    static func markSetupStarted() {
+        UserDefaults.standard.set(true, forKey: hasStartedSetupKey)
+    }
+
     static func markAccessRequested() {
-        UserDefaults.standard.set(true, forKey: hasRequestedAccessKey)
+        markSetupStarted()
     }
 
     static func markGrantConfirmedIfGranted() -> Bool {
@@ -25,6 +41,6 @@ enum ScreenRecordingPermissionStore {
     }
 
     static var needsRelaunchForGrantedAccess: Bool {
-        hasRequestedAccess && !CGPreflightScreenCaptureAccess()
+        hasStartedSetup && !CGPreflightScreenCaptureAccess()
     }
 }

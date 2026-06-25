@@ -110,7 +110,6 @@ final class AppModel: ObservableObject {
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
     private static let hasCompletedFirstLaunchOnboardingKey = "hasCompletedFirstLaunchOnboarding"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
-    private static let hasPresentedScreenRecordingPrimerKey = "hasPresentedScreenRecordingPrimer"
     private static let settingsWindowPresentationID = "settings"
     private static let aboutWindowPresentationID = "about"
     private static let retiredModelAliases = [
@@ -144,8 +143,8 @@ final class AppModel: ObservableObject {
     private var highlightLocalClickMonitor: Any?
     private var shouldRestoreAnswerWindowAfterHighlight = false
     private var windowsHiddenForHighlight: [NSWindow] = []
-    private var hasPresentedScreenRecordingPrimer = false
     private var shouldRelaunchAfterTerminate = false
+    private var screenRecordingPrimerTask: Task<Void, Never>?
     private var shouldRestoreTranscriptAfterScreenRecordingPrompt = false
     private var shouldRestoreSettingsAfterScreenRecordingPrompt = false
     private var appActivationObserver: NSObjectProtocol?
@@ -317,7 +316,7 @@ final class AppModel: ObservableObject {
                 }
 
                 if !shouldShowFirstLaunchOnboarding,
-                   !ScreenRecordingPermissionStore.hasRequestedAccess {
+                   !ScreenRecordingPermissionStore.hasStartedSetup {
                     presentScreenRecordingPrimerIfNeeded()
                 }
             }
@@ -945,6 +944,9 @@ final class AppModel: ObservableObject {
     }
 
     func openScreenRecordingSettings() {
+        ScreenRecordingPermissionStore.markSetupStarted()
+        shouldOfferPermissionRelaunch = false
+
         let urls = [
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"),
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
@@ -1007,20 +1009,20 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess {
+        if ScreenRecordingPermissionStore.hasStartedSetup {
             noteScreenRecordingRelaunchNeeded()
             return
         }
 
-        guard !defaults.bool(forKey: Self.hasPresentedScreenRecordingPrimerKey) else { return }
-        guard !hasPresentedScreenRecordingPrimer else { return }
-
-        hasPresentedScreenRecordingPrimer = true
-        defaults.set(true, forKey: Self.hasPresentedScreenRecordingPrimerKey)
+        ScreenRecordingPermissionStore.markSetupStarted()
         DiagnosticLogger.log("Presenting Screen Recording primer.", category: "Permissions")
-        Task { @MainActor in
+
+        screenRecordingPrimerTask?.cancel()
+        screenRecordingPrimerTask = Task { @MainActor in
             // Let the Settings window finish appearing before presenting the modal primer.
             try? await Task.sleep(nanoseconds: 300_000_000)
+            guard !Task.isCancelled else { return }
+
             if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
                 refreshScreenRecordingPermissionState()
                 return
@@ -1054,6 +1056,8 @@ final class AppModel: ObservableObject {
                 DiagnosticLogger.log("User chose Not Yet for Screen Recording.", category: "Permissions")
                 showFirstLaunchOnboarding()
             }
+
+            screenRecordingPrimerTask = nil
         }
     }
 
@@ -1067,7 +1071,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        if ScreenRecordingPermissionStore.hasRequestedAccess {
+        if ScreenRecordingPermissionStore.hasStartedSetup {
             noteScreenRecordingRelaunchNeeded()
             restoreWindowsAfterScreenRecordingPrompt()
             return
