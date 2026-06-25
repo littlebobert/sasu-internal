@@ -5,8 +5,12 @@ struct TranslationDirection {
     let expectedSourceLanguage: String
     let alreadyInTargetInstruction: String
 
+    static var prefersJapaneseInterface: Bool {
+        Locale.preferredLanguages.first?.hasPrefix("ja") == true
+    }
+
     static var forUserInterface: TranslationDirection {
-        if Locale.preferredLanguages.first?.hasPrefix("ja") == true {
+        if prefersJapaneseInterface {
             return TranslationDirection(
                 targetLanguage: "English",
                 expectedSourceLanguage: "Japanese",
@@ -19,5 +23,23 @@ struct TranslationDirection {
             expectedSourceLanguage: "English",
             alreadyInTargetInstruction: "If the source text is already natural Japanese, return it unchanged."
         )
+    }
+
+    static var screenshotLanguageBehaviorInstructions: String {
+        if prefersJapaneseInterface {
+            return """
+            Language behavior:
+            - Always answer in English, even if the user's request is in Japanese.
+            - Preserve visible UI labels in their original on-screen language. Quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
+            - For actionSuggestion.label, use a short user-facing target label in English. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+            """
+        }
+
+        return """
+        Language behavior:
+        - Answer in the same language as the user's request unless the user asks otherwise.
+        - Preserve visible UI labels in their original on-screen language. For Japanese UI, quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
+        - For actionSuggestion.label, use a short user-facing target label in the same language as the user's request. If the visible UI label is in another language, include that original on-screen label in actionSuggestion.reason or answer.
+        """
     }
 }

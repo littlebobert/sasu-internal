@@ -201,10 +201,7 @@ struct OpenAIClient {
 
             For icon-only targets (exactText is null), place the rectangle tightly around the specific icon only. In toolbars with multiple similar icons, use nearby labeled controls as anchors and double-check you selected the correct icon. Prefer shape "circle" for compact icon buttons. Put disambiguation details in reason when needed.
 
-            Language behavior:
-            - Answer in the same language as the user's request unless the user asks otherwise.
-            - Preserve visible UI labels in their original on-screen language. For Japanese UI, quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
-            - For actionSuggestion.label, use a short user-facing target label in the same language as the user's request. If the visible UI label is in another language, include that original on-screen label in actionSuggestion.reason or answer.
+            \(TranslationDirection.screenshotLanguageBehaviorInstructions)
 
             Format the answer field as clear Markdown.
             """
