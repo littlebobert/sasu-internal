@@ -6,7 +6,8 @@ import ScreenCaptureKit
 struct ScreenshotService {
     func captureMainDisplay() async throws -> ScreenshotPayload {
         let hadPermissionBeforeRequest = CGPreflightScreenCaptureAccess()
-        if !hadPermissionBeforeRequest {
+        if !hadPermissionBeforeRequest, !ScreenRecordingPermissionStore.hasRequestedAccess {
+            ScreenRecordingPermissionStore.markAccessRequested()
             _ = CGRequestScreenCaptureAccess()
         }
 

@@ -111,7 +111,6 @@ final class AppModel: ObservableObject {
     private static let hasCompletedFirstLaunchOnboardingKey = "hasCompletedFirstLaunchOnboarding"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
     private static let hasPresentedScreenRecordingPrimerKey = "hasPresentedScreenRecordingPrimer"
-    private static let screenRecordingPermissionGrantedKey = "screenRecordingPermissionGranted"
     private static let settingsWindowPresentationID = "settings"
     private static let aboutWindowPresentationID = "about"
     private static let retiredModelAliases = [
@@ -257,18 +256,13 @@ final class AppModel: ObservableObject {
     }
 
     private func refreshScreenRecordingPermissionState() {
-        guard CGPreflightScreenCaptureAccess() else { return }
-
-        defaults.set(true, forKey: Self.screenRecordingPermissionGrantedKey)
-        shouldOfferPermissionRelaunch = false
-    }
-
-    private var hasPreviouslyGrantedScreenRecording: Bool {
-        defaults.bool(forKey: Self.screenRecordingPermissionGrantedKey)
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
+            shouldOfferPermissionRelaunch = false
+        }
     }
 
     private func noteScreenRecordingRelaunchNeeded() {
-        guard hasPreviouslyGrantedScreenRecording else { return }
+        guard ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess else { return }
 
         shouldOfferPermissionRelaunch = true
         statusMessage = "Screen Recording is enabled in System Settings, but Sasu needs one more relaunch before capture works."
@@ -298,7 +292,7 @@ final class AppModel: ObservableObject {
             // Let the app finish installing menu/activation state before presenting launch UI.
             try? await Task.sleep(nanoseconds: 100_000_000)
             await MainActor.run {
-                if CGPreflightScreenCaptureAccess() {
+                if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
                     refreshScreenRecordingPermissionState()
                     isFirstLaunchOnboardingVisible = false
                     isOnboardingGuidanceVisible = false
@@ -310,7 +304,7 @@ final class AppModel: ObservableObject {
                     return
                 }
 
-                if hasPreviouslyGrantedScreenRecording {
+                if ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess {
                     noteScreenRecordingRelaunchNeeded()
                 }
 
@@ -322,7 +316,8 @@ final class AppModel: ObservableObject {
                     answerWindowController.show(appModel: self)
                 }
 
-                if !shouldShowFirstLaunchOnboarding, !hasPreviouslyGrantedScreenRecording {
+                if !shouldShowFirstLaunchOnboarding,
+                   !ScreenRecordingPermissionStore.hasRequestedAccess {
                     presentScreenRecordingPrimerIfNeeded()
                 }
             }
@@ -379,13 +374,13 @@ final class AppModel: ObservableObject {
         isOnboardingGuidanceVisible = false
         statusMessage = "Next, enable Screen Recording so Sasu can see the page you ask about."
 
-        if CGPreflightScreenCaptureAccess() {
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
             statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
             return
         }
 
-        if hasPreviouslyGrantedScreenRecording {
+        if ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess {
             noteScreenRecordingRelaunchNeeded()
             return
         }
@@ -1007,12 +1002,12 @@ final class AppModel: ObservableObject {
     }
 
     private func presentScreenRecordingPrimerIfNeeded() {
-        guard !CGPreflightScreenCaptureAccess() else {
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
             return
         }
 
-        guard !hasPreviouslyGrantedScreenRecording else {
+        if ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess {
             noteScreenRecordingRelaunchNeeded()
             return
         }
@@ -1026,7 +1021,15 @@ final class AppModel: ObservableObject {
         Task { @MainActor in
             // Let the Settings window finish appearing before presenting the modal primer.
             try? await Task.sleep(nanoseconds: 300_000_000)
-            guard !CGPreflightScreenCaptureAccess() else { return }
+            if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
+                refreshScreenRecordingPermissionState()
+                return
+            }
+
+            if ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess {
+                noteScreenRecordingRelaunchNeeded()
+                return
+            }
 
             noteWindowsToRestoreAfterScreenRecordingPrompt()
             hideWindowsForSystemPermissionPrompt()
@@ -1057,19 +1060,27 @@ final class AppModel: ObservableObject {
     private func requestScreenRecordingPermission() {
         DiagnosticLogger.log("Requesting Screen Recording permission.", category: "Permissions")
 
-        if hasPreviouslyGrantedScreenRecording {
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
+            refreshScreenRecordingPermissionState()
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            restoreWindowsAfterScreenRecordingPrompt()
+            return
+        }
+
+        if ScreenRecordingPermissionStore.hasRequestedAccess {
             noteScreenRecordingRelaunchNeeded()
             restoreWindowsAfterScreenRecordingPrompt()
             return
         }
 
+        ScreenRecordingPermissionStore.markAccessRequested()
         noteWindowsToRestoreAfterScreenRecordingPrompt()
         hideWindowsForSystemPermissionPrompt()
 
         statusMessage = "Waiting for Screen Recording permission..."
         _ = CGRequestScreenCaptureAccess()
 
-        if CGPreflightScreenCaptureAccess() {
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             DiagnosticLogger.log("Screen Recording permission granted immediately.", category: "Permissions")
             refreshScreenRecordingPermissionState()
             statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
@@ -1100,7 +1111,7 @@ final class AppModel: ObservableObject {
             || shouldRestoreSettingsAfterScreenRecordingPrompt
         else { return }
 
-        if CGPreflightScreenCaptureAccess() {
+        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
             statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
         }
