@@ -245,6 +245,75 @@ struct SettingsView: View {
                         appModel.resetTranslateClipboardHotkeyToDefault()
                     }
                 }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Translate Selection")
+                        .font(.caption.bold())
+
+                    Text("Select text in any app, press the hotkey, and Sasu will copy, translate, and paste the result without coming to the front.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack {
+                        Circle()
+                            .fill(appModel.hasAccessibilityAccess ? Color.green : Color.orange)
+                            .frame(width: 10, height: 10)
+                        Text(appModel.hasAccessibilityAccess ? "Accessibility permission granted" : "Accessibility permission required")
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Text("Current: \(appModel.translateSelectionHotkeyDescription)")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Key", selection: $appModel.translateSelectionHotkeyKeyCode) {
+                        ForEach(HotkeyConfiguration.supportedKeys) { key in
+                            Text(key.name).tag(key.keyCode)
+                        }
+                    }
+                    .frame(maxWidth: 240)
+
+                    HStack {
+                        modifierToggle("Control", isEnabled: {
+                            appModel.translateSelectionHotkeyModifiers & UInt32(controlKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateSelectionHotkeyModifier(UInt32(controlKey), enabled: $0)
+                        })
+                        modifierToggle("Option", isEnabled: {
+                            appModel.translateSelectionHotkeyModifiers & UInt32(optionKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateSelectionHotkeyModifier(UInt32(optionKey), enabled: $0)
+                        })
+                        modifierToggle("Shift", isEnabled: {
+                            appModel.translateSelectionHotkeyModifiers & UInt32(shiftKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateSelectionHotkeyModifier(UInt32(shiftKey), enabled: $0)
+                        })
+                        modifierToggle("Command", isEnabled: {
+                            appModel.translateSelectionHotkeyModifiers & UInt32(cmdKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateSelectionHotkeyModifier(UInt32(cmdKey), enabled: $0)
+                        })
+                    }
+
+                    HStack {
+                        Button("Open Accessibility Settings") {
+                            appModel.openAccessibilitySettings()
+                        }
+
+                        if !appModel.hasAccessibilityAccess {
+                            Button("Request Accessibility Access") {
+                                appModel.requestAccessibilityAccess()
+                            }
+                        }
+                    }
+
+                    Button("Reset Translate Selection Hotkey") {
+                        appModel.resetTranslateSelectionHotkeyToDefault()
+                    }
+                }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)

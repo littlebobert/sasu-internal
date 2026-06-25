@@ -35,6 +35,8 @@
 	<string>13.0</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
+	<key>NSAccessibilityUsageDescription</key>
+	<string>Sasu needs Accessibility access to copy selected text and paste translations back into other apps.</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
 	<key>SASUBackendBaseURL</key>

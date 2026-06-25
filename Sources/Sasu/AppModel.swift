@@ -61,8 +61,21 @@ final class AppModel: ObservableObject {
             updateTranslateClipboardHotkeyRegistration()
         }
     }
+    @Published var translateSelectionHotkeyKeyCode: UInt32 {
+        didSet {
+            defaults.set(Int(translateSelectionHotkeyKeyCode), forKey: Self.translateSelectionHotkeyKeyCodeKey)
+            updateTranslateSelectionHotkeyRegistration()
+        }
+    }
+    @Published var translateSelectionHotkeyModifiers: UInt32 {
+        didSet {
+            defaults.set(Int(translateSelectionHotkeyModifiers), forKey: Self.translateSelectionHotkeyModifiersKey)
+            updateTranslateSelectionHotkeyRegistration()
+        }
+    }
     @Published private(set) var hotkeyDescription = HotkeyConfiguration.defaultConfiguration.displayName
     @Published private(set) var translateClipboardHotkeyDescription = HotkeyConfiguration.defaultTranslateClipboardConfiguration.displayName
+    @Published private(set) var translateSelectionHotkeyDescription = HotkeyConfiguration.defaultTranslateSelectionConfiguration.displayName
     @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then press the hotkey or use Capture Screen."
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
@@ -90,6 +103,8 @@ final class AppModel: ObservableObject {
     private static let hotkeyModifiersKey = "hotkeyModifiers"
     private static let translateClipboardHotkeyKeyCodeKey = "translateClipboardHotkeyKeyCode"
     private static let translateClipboardHotkeyModifiersKey = "translateClipboardHotkeyModifiers"
+    private static let translateSelectionHotkeyKeyCodeKey = "translateSelectionHotkeyKeyCode"
+    private static let translateSelectionHotkeyModifiersKey = "translateSelectionHotkeyModifiers"
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
     private static let hasCompletedFirstLaunchOnboardingKey = "hasCompletedFirstLaunchOnboarding"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
@@ -109,12 +124,15 @@ final class AppModel: ObservableObject {
     private let backendClient: BackendClient
     private let highlightGroundingService: HighlightGroundingService
     private let clipboardTextService: ClipboardTextService
+    private let selectionAutomationService: SelectionAutomationService
     private let answerWindowController: AnswerWindowController
     private let settingsWindowController: SettingsWindowController
     private let screenshotPreviewWindowController: ScreenshotPreviewWindowController
     private let highlightOverlayController: HighlightOverlayController
+    private let cursorProgressOverlayController: CursorProgressOverlayController
     private var hotkeyManager: HotkeyManager?
     private var translateClipboardHotkeyManager: HotkeyManager?
+    private var translateSelectionHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
     private var highlightAutoHideTask: Task<Void, Never>?
@@ -137,7 +155,8 @@ final class AppModel: ObservableObject {
         openAIClient: OpenAIClient = OpenAIClient(),
         backendClient: BackendClient = BackendClient(),
         highlightGroundingService: HighlightGroundingService = HighlightGroundingService(),
-        clipboardTextService: ClipboardTextService = ClipboardTextService()
+        clipboardTextService: ClipboardTextService = ClipboardTextService(),
+        selectionAutomationService: SelectionAutomationService = SelectionAutomationService()
     ) {
         self.defaults = defaults
         self.keychain = keychain
@@ -146,10 +165,12 @@ final class AppModel: ObservableObject {
         self.backendClient = backendClient
         self.highlightGroundingService = highlightGroundingService
         self.clipboardTextService = clipboardTextService
+        self.selectionAutomationService = selectionAutomationService
         self.answerWindowController = AnswerWindowController()
         self.settingsWindowController = SettingsWindowController()
         self.screenshotPreviewWindowController = ScreenshotPreviewWindowController()
         self.highlightOverlayController = HighlightOverlayController()
+        self.cursorProgressOverlayController = CursorProgressOverlayController()
         let savedAccessMode = defaults.string(forKey: Self.accessModeKey)
         self.accessMode = AccessMode(rawValue: savedAccessMode ?? "") ?? .invite
         self.backendBaseURLInput = defaults.string(forKey: Self.backendBaseURLKey) ?? Self.defaultBackendBaseURL
@@ -189,8 +210,17 @@ final class AppModel: ObservableObject {
         self.translateClipboardHotkeyModifiers = savedTranslateClipboardHotkeyModifiers == 0
             ? HotkeyConfiguration.defaultTranslateClipboardConfiguration.modifiers
             : savedTranslateClipboardHotkeyModifiers
+        let savedTranslateSelectionHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.translateSelectionHotkeyKeyCodeKey))
+        self.translateSelectionHotkeyKeyCode = savedTranslateSelectionHotkeyKeyCode == 0
+            ? HotkeyConfiguration.defaultTranslateSelectionConfiguration.keyCode
+            : savedTranslateSelectionHotkeyKeyCode
+        let savedTranslateSelectionHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateSelectionHotkeyModifiersKey))
+        self.translateSelectionHotkeyModifiers = savedTranslateSelectionHotkeyModifiers == 0
+            ? HotkeyConfiguration.defaultTranslateSelectionConfiguration.modifiers
+            : savedTranslateSelectionHotkeyModifiers
         self.hotkeyDescription = hotkeyConfiguration.displayName
         self.translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
+        self.translateSelectionHotkeyDescription = translateSelectionHotkeyConfiguration.displayName
         refreshStoredAPIKeyPreview()
         refreshStoredBackendAccessTokenPreview()
         if savedAccessMode == nil, !hasStoredBackendAccessToken, hasStoredAPIKey {
@@ -211,8 +241,15 @@ final class AppModel: ObservableObject {
         if translateClipboardHotkeyManager == nil {
             updateTranslateClipboardHotkeyRegistration()
         }
+        if translateSelectionHotkeyManager == nil {
+            updateTranslateSelectionHotkeyRegistration()
+        }
 
         registerAppActivationObserverIfNeeded()
+    }
+
+    var hasAccessibilityAccess: Bool {
+        selectionAutomationService.hasAccessibilityAccess()
     }
 
     func showLaunchWindowIfNeeded() {
@@ -604,6 +641,26 @@ final class AppModel: ObservableObject {
         statusMessage = "Translate Clipboard hotkey reset to \(translateClipboardHotkeyDescription)."
     }
 
+    func setTranslateSelectionHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
+        if enabled {
+            translateSelectionHotkeyModifiers |= modifier
+        } else {
+            let updatedModifiers = translateSelectionHotkeyModifiers & ~modifier
+            guard updatedModifiers != 0 else {
+                errorMessage = "Choose at least one modifier for the Translate Selection hotkey."
+                return
+            }
+
+            translateSelectionHotkeyModifiers = updatedModifiers
+        }
+    }
+
+    func resetTranslateSelectionHotkeyToDefault() {
+        translateSelectionHotkeyKeyCode = HotkeyConfiguration.defaultTranslateSelectionConfiguration.keyCode
+        translateSelectionHotkeyModifiers = HotkeyConfiguration.defaultTranslateSelectionConfiguration.modifiers
+        statusMessage = "Translate Selection hotkey reset to \(translateSelectionHotkeyDescription)."
+    }
+
     func captureAndAsk() {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
@@ -625,6 +682,18 @@ final class AppModel: ObservableObject {
 
         currentRequestTask = Task {
             await runTranslateClipboard()
+        }
+    }
+
+    func translateSelection() {
+        guard !isRequestInFlight else { return }
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            return
+        }
+
+        currentRequestTask = Task {
+            await runTranslateSelection()
         }
     }
 
@@ -853,6 +922,34 @@ final class AppModel: ObservableObject {
         errorMessage = "Open System Settings > Privacy & Security > Screen Recording, then enable Sasu."
     }
 
+    func openAccessibilitySettings() {
+        let urls = [
+            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"),
+            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
+        ].compactMap { $0 }
+
+        statusMessage = "Opened Accessibility settings. Enable Sasu, then try Translate Selection again."
+
+        for url in urls where Self.openSystemSettings(url: url) {
+            Task { @MainActor in
+                for delay in [250_000_000, 750_000_000, 1_500_000_000] {
+                    try? await Task.sleep(nanoseconds: UInt64(delay))
+                    if Self.activateSystemSettings() {
+                        break
+                    }
+                }
+            }
+            return
+        }
+
+        errorMessage = "Open System Settings > Privacy & Security > Accessibility, then enable Sasu."
+    }
+
+    func requestAccessibilityAccess() {
+        selectionAutomationService.requestAccessibilityAccess()
+        statusMessage = "Approve the macOS Accessibility prompt, or enable Sasu in System Settings."
+    }
+
     private func presentScreenRecordingPrimerIfNeeded() {
         guard !hasPresentedScreenRecordingPrimer else { return }
         guard !CGPreflightScreenCaptureAccess() else { return }
@@ -978,6 +1075,17 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private var translateSelectionHotkeyConfiguration: HotkeyConfiguration {
+        HotkeyConfiguration(
+            keyCode: translateSelectionHotkeyKeyCode,
+            modifiers: translateSelectionHotkeyModifiers
+        )
+    }
+
+    private var hotkeyReadinessMessage: String {
+        "Ready. Press \(hotkeyDescription) to capture, \(translateClipboardHotkeyDescription) to translate clipboard, or \(translateSelectionHotkeyDescription) to translate selection."
+    }
+
     private func updateHotkeyRegistration() {
         hotkeyManager?.unregister()
         hotkeyManager = nil
@@ -993,7 +1101,7 @@ final class AppModel: ObservableObject {
             try manager.register()
             hotkeyManager = manager
             errorMessage = nil
-            statusMessage = "Ready. Press \(hotkeyDescription) to capture or \(translateClipboardHotkeyDescription) to translate clipboard."
+            statusMessage = hotkeyReadinessMessage
         } catch {
             errorMessage = "Could not register \(hotkeyDescription): \(error.localizedDescription)"
             statusMessage = "Use Capture Screen from the app while the hotkey is unavailable."
@@ -1015,10 +1123,32 @@ final class AppModel: ObservableObject {
             try manager.register()
             translateClipboardHotkeyManager = manager
             errorMessage = nil
-            statusMessage = "Ready. Press \(hotkeyDescription) to capture or \(translateClipboardHotkeyDescription) to translate clipboard."
+            statusMessage = hotkeyReadinessMessage
         } catch {
             errorMessage = "Could not register \(translateClipboardHotkeyDescription): \(error.localizedDescription)"
             statusMessage = "Use Translate Clipboard from the app while the hotkey is unavailable."
+        }
+    }
+
+    private func updateTranslateSelectionHotkeyRegistration() {
+        translateSelectionHotkeyManager?.unregister()
+        translateSelectionHotkeyManager = nil
+
+        translateSelectionHotkeyDescription = translateSelectionHotkeyConfiguration.displayName
+        let manager = HotkeyManager(configuration: translateSelectionHotkeyConfiguration, identifier: 3) { [weak self] in
+            Task { @MainActor in
+                self?.translateSelection()
+            }
+        }
+
+        do {
+            try manager.register()
+            translateSelectionHotkeyManager = manager
+            errorMessage = nil
+            statusMessage = hotkeyReadinessMessage
+        } catch {
+            errorMessage = "Could not register \(translateSelectionHotkeyDescription): \(error.localizedDescription)"
+            statusMessage = "Use Translate Selection from the app while the hotkey is unavailable."
         }
     }
 
@@ -1125,6 +1255,77 @@ final class AppModel: ObservableObject {
         if !shouldActivateAnswerWindow {
             requestUserAttentionIfNeeded()
         }
+    }
+
+    private func runTranslateSelection() async {
+        isRequestInFlight = true
+        cursorProgressOverlayController.show()
+        defer {
+            cursorProgressOverlayController.hide()
+        }
+
+        errorMessage = nil
+        shouldOfferPermissionRelaunch = false
+        statusMessage = "Translating selection..."
+        Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+
+        var pasteboardBackup: PasteboardBackup?
+
+        do {
+            try Task.checkCancellation()
+
+            guard selectionAutomationService.hasAccessibilityAccess() else {
+                selectionAutomationService.requestAccessibilityAccess()
+                throw SelectionAutomationError.accessibilityRequired
+            }
+
+            let copiedSelection = try await selectionAutomationService.copySelectedText()
+            pasteboardBackup = copiedSelection.backup
+            let sourceText = copiedSelection.text
+
+            try Task.checkCancellation()
+            let credential = try requestCredential()
+
+            let answer = try await openAIClient.translateClipboardText(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                serviceTier: serviceTier,
+                sourceText: sourceText,
+                conversationContext: nil,
+                forSelectionReplacement: true
+            )
+            try Task.checkCancellation()
+
+            let translation = Self.normalizedTranslationText(answer)
+
+            try await selectionAutomationService.pasteTranslation(
+                translation,
+                restoring: copiedSelection.backup
+            )
+            pasteboardBackup = nil
+
+            statusMessage = "Selection translated."
+            Self.logger.info("Selection translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count)")
+        } catch is CancellationError {
+            if let pasteboardBackup {
+                pasteboardBackup.restore()
+            }
+            statusMessage = "Request stopped."
+            errorMessage = nil
+            Self.logger.info("Selection translation cancelled.")
+        } catch {
+            if let pasteboardBackup {
+                pasteboardBackup.restore()
+            }
+            errorMessage = error.localizedDescription
+            statusMessage = "Selection translation failed."
+            Self.logger.error("Selection translation failed: \(error.localizedDescription, privacy: .public)")
+            requestUserAttentionIfNeeded()
+        }
+
+        isRequestInFlight = false
+        currentRequestTask = nil
     }
 
     private static func normalizedTranslationText(_ text: String) -> String {

@@ -66,7 +66,8 @@ struct OpenAIClient {
         reasoningEffort: String,
         serviceTier: String,
         sourceText: String,
-        conversationContext: String?
+        conversationContext: String?,
+        forSelectionReplacement: Bool = false
     ) async throws -> String {
         let requestBody = ResponsesRequest(
             model: modelID,
@@ -76,7 +77,8 @@ struct OpenAIClient {
                     content: [
                         .inputText(buildClipboardTranslationPrompt(
                             sourceText: sourceText,
-                            conversationContext: conversationContext
+                            conversationContext: conversationContext,
+                            forSelectionReplacement: forSelectionReplacement
                         ))
                     ]
                 )
@@ -231,20 +233,35 @@ struct OpenAIClient {
         return parts.joined(separator: "\n")
     }
 
-    private func buildClipboardTranslationPrompt(sourceText: String, conversationContext: String?) -> String {
+    private func buildClipboardTranslationPrompt(
+        sourceText: String,
+        conversationContext: String?,
+        forSelectionReplacement: Bool
+    ) -> String {
+        let direction = TranslationDirection.forUserInterface
+        var instructions = [
+            "- Translate the source text into natural \(direction.targetLanguage).",
+            "- The text is usually in \(direction.expectedSourceLanguage), but translate appropriately if it is in another language.",
+            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful.",
+            "- \(direction.alreadyInTargetInstruction)"
+        ]
+
+        if forSelectionReplacement {
+            instructions.append("- Return only the translated text. Do not add labels, explanations, summaries, or Markdown headings.")
+        } else {
+            instructions.append("- If this appears to be a chat message, include a one-sentence summary only when it adds useful context.")
+        }
+
+        instructions.append("- Return clear Markdown only. Do not wrap the answer in JSON.")
+
         var parts = [
             "Task: translate clipboard text.",
             "",
             "Source text:",
             sourceText,
             "",
-            "Instructions:",
-            "- Translate the source text into natural English.",
-            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful.",
-            "- If the source text is already English, say that briefly and provide a concise summary instead.",
-            "- If this appears to be a chat message, include a one-sentence summary only when it adds useful context.",
-            "- Return clear Markdown only. Do not wrap the answer in JSON."
-        ]
+            "Instructions:"
+        ] + instructions
 
         if let conversationContext, !conversationContext.isEmpty {
             parts.insert(

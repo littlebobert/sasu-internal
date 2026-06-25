@@ -15,11 +15,17 @@ struct HotkeyConfiguration: Equatable {
         modifiers: UInt32(controlKey | optionKey)
     )
 
+    static let defaultTranslateSelectionConfiguration = HotkeyConfiguration(
+        keyCode: UInt32(kVK_ANSI_T),
+        modifiers: UInt32(controlKey | optionKey)
+    )
+
     static let supportedKeys: [HotkeyKey] = [
         HotkeyKey(name: "Space", keyCode: UInt32(kVK_Space)),
         HotkeyKey(name: "Return", keyCode: UInt32(kVK_Return)),
         HotkeyKey(name: "K", keyCode: UInt32(kVK_ANSI_K)),
         HotkeyKey(name: "J", keyCode: UInt32(kVK_ANSI_J)),
+        HotkeyKey(name: "T", keyCode: UInt32(kVK_ANSI_T)),
         HotkeyKey(name: "S", keyCode: UInt32(kVK_ANSI_S)),
         HotkeyKey(name: "Slash", keyCode: UInt32(kVK_ANSI_Slash))
     ]
