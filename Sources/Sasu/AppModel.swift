@@ -112,6 +112,7 @@ final class AppModel: ObservableObject {
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
     private static let settingsWindowPresentationID = "settings"
     private static let aboutWindowPresentationID = "about"
+    private static let screenshotPreviewWindowPresentationID = "screenshot-preview"
     private static let retiredModelAliases = [
         "gpt-5.5-high-fast"
     ]
@@ -825,8 +826,10 @@ final class AppModel: ObservableObject {
             return
         }
 
+        beginStandardWindowPresentation(Self.screenshotPreviewWindowPresentationID)
         screenshotPreviewWindowController.show(image: image) { [weak self] in
             guard let self else { return }
+            endStandardWindowPresentation(Self.screenshotPreviewWindowPresentationID)
             answerWindowController.show(appModel: self, activate: true)
         }
     }

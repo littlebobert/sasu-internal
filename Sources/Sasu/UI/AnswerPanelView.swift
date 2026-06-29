@@ -252,6 +252,7 @@ struct AnswerPanelView: View {
         .background(Color.blue.opacity(0.08))
         .clipShape(RoundedRectangle(cornerRadius: 8))
         .padding(.top, 2)
+        .textSelection(.enabled)
     }
 
     private var followUp: some View {
