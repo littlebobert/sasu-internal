@@ -328,6 +328,39 @@ print(os.path.relpath(sys.argv[2], sys.argv[1]))
 PY
 )"
 
+landing_repo_current_branch() {
+  git -C "$LANDING_REPO" symbolic-ref --quiet --short HEAD
+}
+
+sync_landing_repo() {
+  local branch
+  branch="$(landing_repo_current_branch)" || {
+    echo "error: landing repo must be on a branch before syncing: $LANDING_REPO" >&2
+    exit 1
+  }
+
+  echo "Syncing landing repo before release edits..."
+  git -C "$LANDING_REPO" fetch origin "$branch"
+  git -C "$LANDING_REPO" pull --rebase --autostash origin "$branch"
+}
+
+push_landing_repo() {
+  local branch
+  branch="$(landing_repo_current_branch)" || {
+    echo "error: landing repo must be on a branch before pushing: $LANDING_REPO" >&2
+    exit 1
+  }
+
+  if git -C "$LANDING_REPO" push; then
+    return 0
+  fi
+
+  echo "Landing repo push was rejected. Rebasing on origin/$branch and retrying once..."
+  git -C "$LANDING_REPO" fetch origin "$branch"
+  git -C "$LANDING_REPO" pull --rebase --autostash origin "$branch"
+  git -C "$LANDING_REPO" push
+}
+
 mkdir -p "$ROOT_DIR/Build"
 cd "$ROOT_DIR"
 
@@ -568,6 +601,8 @@ fi
 
 notes_pair_json="$(python3 -c 'import pathlib, sys; print(pathlib.Path(sys.argv[1]).read_text())' "$NOTES_PAIR_JSON")"
 
+sync_landing_repo
+
 echo "Updating landing page: $LANDING_PAGE"
 python3 - "$LANDING_PAGE" "$VERSION" "$notes_pair_json" <<'PY'
 import html
@@ -763,7 +798,7 @@ if [[ -z "$landing_changes" ]]; then
 else
   git -C "$LANDING_REPO" add "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$COMMON_CSS_RELATIVE_PATH" "$COMMON_JS_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
   git -C "$LANDING_REPO" commit -m "update sasu $VERSION release notes" -- "$LANDING_RELATIVE_PATH" "$INVITE_RELATIVE_PATH" "$COMMON_CSS_RELATIVE_PATH" "$COMMON_JS_RELATIVE_PATH" "$APPCAST_RELATIVE_PATH"
-  git -C "$LANDING_REPO" push
+  push_landing_repo
 fi
 
 echo "Created GitHub release: $TAG"
