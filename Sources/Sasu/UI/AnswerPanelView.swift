@@ -329,6 +329,8 @@ private struct TranscriptMessageView: View {
             } else if let clipboardSourceText {
                 (Text("Clipboard text: ") + Text(clipboardSourceText))
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .fixedSize(horizontal: false, vertical: true)
             } else {
                 MarkdownText(markdown: message.text)
                     .frame(width: availableWidth, alignment: .leading)
