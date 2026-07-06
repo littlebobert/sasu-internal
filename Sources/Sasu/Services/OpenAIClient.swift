@@ -94,6 +94,39 @@ struct OpenAIClient {
         )
     }
 
+    func translateClipboardTextWithReadings(
+        credential: AIRequestCredential,
+        modelID: String,
+        reasoningEffort: String,
+        serviceTier: String,
+        sourceText: String,
+        conversationContext: String?
+    ) async throws -> ClipboardTranslationResult {
+        let requestBody = ResponsesRequest(
+            model: modelID,
+            input: [
+                ResponsesInput(
+                    role: "user",
+                    content: [
+                        .inputText(buildClipboardTranslationWithReadingsPrompt(
+                            sourceText: sourceText,
+                            conversationContext: conversationContext
+                        ))
+                    ]
+                )
+            ],
+            reasoning: Self.reasoningConfiguration(modelID: modelID, effort: reasoningEffort),
+            serviceTier: Self.serviceTierParameter(serviceTier)
+        )
+
+        let text = try await sendResponsesRequest(
+            credential: credential,
+            requestBody: requestBody,
+            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count), includeReadings=true"
+        )
+        return Self.parseClipboardTranslationResult(from: text)
+    }
+
     private func sendResponsesRequest(
         credential: AIRequestCredential,
         requestBody: ResponsesRequest,
@@ -296,6 +329,61 @@ struct OpenAIClient {
         return parts.joined(separator: "\n")
     }
 
+    private func buildClipboardTranslationWithReadingsPrompt(
+        sourceText: String,
+        conversationContext: String?
+    ) -> String {
+        let direction = TranslationDirection.forUserInterface
+        var parts = [
+            "Task: translate clipboard text and provide Japanese readings for display as furigana.",
+            "",
+            "Source text:",
+            sourceText,
+            "",
+            "Return a JSON object only, with this shape:",
+            """
+            {
+              "translation": "Clear Markdown translation for the user",
+              "sourceReadings": [
+                { "text": "exact source segment", "reading": "ひらがな reading or null" }
+              ]
+            }
+            """,
+            "",
+            "Translation instructions:",
+            "- Translate the source text into natural \(direction.targetLanguage).",
+            "- The text is usually in \(direction.expectedSourceLanguage), but translate appropriately if it is in another language.",
+            "- \(direction.alreadyInTargetInstruction)",
+            "- Never repeat the source text verbatim unless every word is already in \(direction.targetLanguage).",
+            "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful.",
+            "- If this appears to be a chat message, include a one-sentence summary only when it adds useful context.",
+            "",
+            "Reading instructions:",
+            "- sourceReadings is required and must not be omitted.",
+            "- sourceReadings must concatenate exactly to the original source text, preserving all characters and order.",
+            "- If the source contains Japanese kanji, add hiragana readings for every segment that contains kanji.",
+            "- Add reading for mixed kanji/kana words such as 書き起こし, 生成して, 担当者.",
+            "- reading must be hiragana only. Use null only for kana-only text, punctuation, Latin text, numbers, emoji, whitespace, and URLs.",
+            "- Keep segments as natural words or short phrases. Do not put readings over entire sentences unless a whole short phrase is one fixed expression.",
+            "- If the source is not Japanese, return one segment with the exact source text and reading null."
+        ]
+
+        if let conversationContext, !conversationContext.isEmpty {
+            parts.insert(
+                contentsOf: [
+                    "Conversation context so far:",
+                    conversationContext,
+                    "",
+                    "Use this only to resolve ambiguous references in the clipboard text.",
+                    ""
+                ],
+                at: 0
+            )
+        }
+
+        return parts.joined(separator: "\n")
+    }
+
     private static func reasoningConfiguration(modelID: String, effort: String) -> ReasoningConfiguration? {
         let normalizedModelID = modelID.lowercased()
         let normalizedEffort = effort.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -332,6 +420,30 @@ struct OpenAIClient {
         return AssistantResult(answer: trimmedText, actionSuggestion: nil)
     }
 
+    private static func parseClipboardTranslationResult(from text: String) -> ClipboardTranslationResult {
+        let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidateJSON = jsonCandidate(from: trimmedText)
+        let decoder = JSONDecoder()
+
+        if let data = candidateJSON.data(using: .utf8),
+           let envelope = try? decoder.decode(ClipboardTranslationEnvelope.self, from: data) {
+            let translation = envelope.translation.trimmingCharacters(in: .whitespacesAndNewlines)
+            let segmentCount = envelope.sourceReadings?.count ?? 0
+            let readingCount = envelope.sourceReadings?.filter { $0.reading?.isEmpty == false }.count ?? 0
+            DiagnosticLogger.log(
+                "Parsed clipboard translation JSON. sourceReadingSegments=\(segmentCount) segmentsWithReadings=\(readingCount)",
+                category: "OpenAI"
+            )
+            return ClipboardTranslationResult(
+                translation: translation.isEmpty ? trimmedText : translation,
+                sourceReadings: envelope.sourceReadings?.filter { !$0.text.isEmpty }
+            )
+        }
+
+        DiagnosticLogger.log("Clipboard translation response was not parseable as reading JSON.", category: "OpenAI")
+        return ClipboardTranslationResult(translation: trimmedText, sourceReadings: nil)
+    }
+
     private static func jsonCandidate(from text: String) -> String {
         if text.hasPrefix("```") {
             let lines = text.components(separatedBy: "\n")
@@ -349,6 +461,16 @@ struct OpenAIClient {
 private struct AssistantResultEnvelope: Decodable {
     let answer: String
     let actionSuggestion: HighlightSuggestion?
+}
+
+struct ClipboardTranslationResult {
+    let translation: String
+    let sourceReadings: [RubyTextSegment]?
+}
+
+private struct ClipboardTranslationEnvelope: Decodable {
+    let translation: String
+    let sourceReadings: [RubyTextSegment]?
 }
 
 private struct ResponsesRequest: Encodable {

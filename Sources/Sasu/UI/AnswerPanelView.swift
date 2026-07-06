@@ -327,10 +327,7 @@ private struct TranscriptMessageView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if let clipboardSourceText {
-                (Text("Clipboard text: ") + Text(clipboardSourceText))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .textSelection(.enabled)
-                    .fixedSize(horizontal: false, vertical: true)
+                clipboardSourceView(clipboardSourceText)
             } else {
                 MarkdownText(markdown: message.text)
                     .frame(width: availableWidth, alignment: .leading)
@@ -338,6 +335,34 @@ private struct TranscriptMessageView: View {
                     .padding(.bottom, 6)
             }
         }
+    }
+
+    @ViewBuilder
+    private func clipboardSourceView(_ text: String) -> some View {
+        if let sourceReadings = usefulSourceReadings {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Clipboard text:")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+
+                RubyTextView(segments: sourceReadings)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            (Text("Clipboard text: ") + Text(text))
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .textSelection(.enabled)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var usefulSourceReadings: [RubyTextSegment]? {
+        guard let sourceReadings = message.sourceReadings,
+              sourceReadings.contains(where: { $0.reading?.isEmpty == false }) else {
+            return nil
+        }
+
+        return sourceReadings
     }
 
     private func safariPageIncludedBadge(_ context: BrowserPageContext) -> some View {
