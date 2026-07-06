@@ -1,18 +1,18 @@
+import CoreText
 import SwiftUI
-import WebKit
 
 struct RubyTextView: View {
     let segments: [RubyTextSegment]
     @State private var height: CGFloat = 44
 
     var body: some View {
-        RubyWebView(segments: segments, height: $height)
+        RubyCoreTextView(segments: segments, height: $height)
             .frame(height: height)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-private struct RubyWebView: NSViewRepresentable {
+private struct RubyCoreTextView: NSViewRepresentable {
     let segments: [RubyTextSegment]
     @Binding var height: CGFloat
 
@@ -20,117 +20,142 @@ private struct RubyWebView: NSViewRepresentable {
         Coordinator(height: $height)
     }
 
-    func makeNSView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        let webView = ScrollPassthroughWebView(frame: .zero, configuration: configuration)
-        webView.navigationDelegate = context.coordinator
-        webView.setValue(false, forKey: "drawsBackground")
-        return webView
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        let html = Self.html(for: segments)
-        guard context.coordinator.currentHTML != html else { return }
-        context.coordinator.currentHTML = html
-        webView.loadHTMLString(html, baseURL: nil)
-    }
-
-    private static func html(for segments: [RubyTextSegment]) -> String {
-        """
-        <!doctype html>
-        <html>
-        <head>
-        <meta charset="utf-8">
-        <style>
-        html, body {
-          margin: 0;
-          padding: 0;
-          background: transparent;
-          color: -apple-system-label;
-          font: 13px -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Yu Gothic", sans-serif;
-          line-height: 1.8;
-          overflow: hidden;
-          -webkit-user-select: text;
-          user-select: text;
+    func makeNSView(context: Context) -> CoreTextRubyDrawingView {
+        let view = CoreTextRubyDrawingView()
+        view.heightDidChange = { [weak coordinator = context.coordinator] height in
+            coordinator?.setHeight(height)
         }
-        ruby { ruby-position: over; }
-        rt {
-          color: -apple-system-secondary-label;
-          font-size: 0.65em;
-          line-height: 1;
-        }
-        </style>
-        </head>
-        <body>\(segments.map(htmlSegment).joined())</body>
-        </html>
-        """
+        return view
     }
 
-    private static func htmlSegment(_ segment: RubyTextSegment) -> String {
-        let text = escapeHTML(segment.text)
-        guard let reading = segment.reading?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !reading.isEmpty else {
-            return text
+    func updateNSView(_ view: CoreTextRubyDrawingView, context: Context) {
+        let attributedString = Self.attributedString(for: segments)
+        guard context.coordinator.currentAttributedString != attributedString else {
+            view.updateMeasuredHeight()
+            return
         }
 
-        return "<ruby><rb>\(text)</rb><rt>\(escapeHTML(reading))</rt></ruby>"
+        context.coordinator.currentAttributedString = attributedString
+        view.attributedString = attributedString
     }
 
-    private static func escapeHTML(_ value: String) -> String {
-        value
-            .replacingOccurrences(of: "&", with: "&amp;")
-            .replacingOccurrences(of: "<", with: "&lt;")
-            .replacingOccurrences(of: ">", with: "&gt;")
-            .replacingOccurrences(of: "\"", with: "&quot;")
-            .replacingOccurrences(of: "'", with: "&#39;")
-            .replacingOccurrences(of: "\n", with: "<br>")
+    private static func attributedString(for segments: [RubyTextSegment]) -> NSAttributedString {
+        let result = NSMutableAttributedString()
+        let paragraphStyle = NSMutableParagraphStyle()
+        paragraphStyle.lineSpacing = 12
+
+        let baseAttributes: [NSAttributedString.Key: Any] = [
+            .font: NSFont.systemFont(ofSize: 13),
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: paragraphStyle
+        ]
+
+        for segment in segments {
+            var attributes = baseAttributes
+            if let annotation = rubyAnnotation(for: segment.reading) {
+                attributes[NSAttributedString.Key(rawValue: kCTRubyAnnotationAttributeName as String)] = annotation
+            }
+
+            result.append(NSAttributedString(string: segment.text, attributes: attributes))
+        }
+
+        return result
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
-        var currentHTML = ""
+    private static func rubyAnnotation(for reading: String?) -> CTRubyAnnotation? {
+        guard let reading = reading?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !reading.isEmpty else { return nil }
+
+        let topText = reading as CFString
+        var values: [Unmanaged<CFString>?] = [
+            Unmanaged.passUnretained(topText),
+            nil,
+            nil,
+            nil
+        ]
+
+        return values.withUnsafeMutableBufferPointer { buffer in
+            CTRubyAnnotationCreate(.auto, .auto, 0.55, buffer.baseAddress!)
+        }
+    }
+
+    final class Coordinator {
+        var currentAttributedString = NSAttributedString()
         private var height: Binding<CGFloat>
 
         init(height: Binding<CGFloat>) {
             self.height = height
         }
 
-        func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            webView.evaluateJavaScript("Math.ceil(document.body.scrollHeight)") { [weak self] result, _ in
-                guard let self else { return }
-                let measuredHeight: CGFloat
-                if let number = result as? NSNumber {
-                    measuredHeight = CGFloat(truncating: number)
-                } else {
-                    measuredHeight = 44
-                }
-
-                DispatchQueue.main.async {
-                    self.height.wrappedValue = max(44, measuredHeight)
-                }
+        func setHeight(_ newHeight: CGFloat) {
+            DispatchQueue.main.async {
+                self.height.wrappedValue = max(44, newHeight)
             }
         }
     }
 }
 
-private final class ScrollPassthroughWebView: WKWebView {
-    override func scrollWheel(with event: NSEvent) {
-        guard let outerScrollView = ancestorScrollView() else {
-            super.scrollWheel(with: event)
+private final class CoreTextRubyDrawingView: NSView {
+    var heightDidChange: ((CGFloat) -> Void)?
+    var attributedString = NSAttributedString() {
+        didSet {
+            framesetter = CTFramesetterCreateWithAttributedString(attributedString)
+            updateMeasuredHeight()
+            needsDisplay = true
+        }
+    }
+    private var framesetter = CTFramesetterCreateWithAttributedString(NSAttributedString())
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.backgroundColor = NSColor.clear.cgColor
+    }
+
+    override func setFrameSize(_ newSize: NSSize) {
+        super.setFrameSize(newSize)
+        updateMeasuredHeight()
+    }
+
+    func updateMeasuredHeight() {
+        guard bounds.width > 0 else {
+            heightDidChange?(44)
             return
         }
 
-        outerScrollView.scrollWheel(with: event)
+        let suggestedSize = CTFramesetterSuggestFrameSizeWithConstraints(
+            framesetter,
+            CFRange(location: 0, length: attributedString.length),
+            nil,
+            CGSize(width: bounds.width, height: CGFloat.greatestFiniteMagnitude),
+            nil
+        )
+        heightDidChange?(ceil(suggestedSize.height) + 2)
     }
 
-    private func ancestorScrollView() -> NSScrollView? {
-        var ancestor = superview
-        while let current = ancestor {
-            if let scrollView = current as? NSScrollView {
-                return scrollView
-            }
-            ancestor = current.superview
+    override func draw(_ dirtyRect: NSRect) {
+        guard let context = NSGraphicsContext.current?.cgContext,
+              attributedString.length > 0 else {
+            return
         }
 
-        return nil
+        context.saveGState()
+        context.textMatrix = .identity
+
+        let drawingBounds = bounds.insetBy(dx: 0, dy: 1)
+        let path = CGPath(rect: drawingBounds, transform: nil)
+        let frame = CTFramesetterCreateFrame(
+            framesetter,
+            CFRange(location: 0, length: attributedString.length),
+            path,
+            nil
+        )
+        CTFrameDraw(frame, context)
+        context.restoreGState()
     }
 }
