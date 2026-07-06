@@ -1625,9 +1625,7 @@ final class AppModel: ObservableObject {
 
     private func screenshotIncludingSafariPageContextIfNeeded(_ screenshot: ScreenshotPayload) async -> ScreenshotPayload {
         guard automaticallyIncludeSafariPageContent else { return screenshot }
-        let shouldTrySafariCapture = screenshot.frontmostApplicationBundleIdentifier == SafariPageCaptureService.safariBundleIdentifier
-            || screenshot.hasVisibleSafariWindow
-        guard shouldTrySafariCapture else {
+        guard screenshot.frontmostApplicationBundleIdentifier == SafariPageCaptureService.safariBundleIdentifier else {
             DiagnosticLogger.log("Safari page capture skipped. foregroundBundle=\(screenshot.frontmostApplicationBundleIdentifier ?? "unknown") hasVisibleSafariWindow=\(screenshot.hasVisibleSafariWindow)", category: "Safari")
             return screenshot
         }
