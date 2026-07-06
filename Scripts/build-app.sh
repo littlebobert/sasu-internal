@@ -10,6 +10,7 @@ MACOS_DIR="$CONTENTS_DIR/MacOS"
 RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 SPARKLE_FRAMEWORK="$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
+ENTITLEMENTS="$ROOT_DIR/AppBundle/Sasu.entitlements"
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 
 cd "$ROOT_DIR"
@@ -48,14 +49,16 @@ if [[ -z "$CODESIGN_IDENTITY" ]]; then
 fi
 
 if [[ -n "$CODESIGN_IDENTITY" ]]; then
-  codesign_args=(--force --deep --sign "$CODESIGN_IDENTITY")
+  framework_codesign_args=(--force --deep --sign "$CODESIGN_IDENTITY")
+  app_codesign_args=(--force --deep --sign "$CODESIGN_IDENTITY" --entitlements "$ENTITLEMENTS")
 
   if [[ "$CONFIGURATION" == "release" ]]; then
-    codesign_args+=(--options runtime --timestamp)
+    framework_codesign_args+=(--options runtime --timestamp)
+    app_codesign_args+=(--options runtime --timestamp)
   fi
 
-  codesign "${codesign_args[@]}" "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
-  codesign "${codesign_args[@]}" "$APP_DIR" >/dev/null
+  codesign "${framework_codesign_args[@]}" "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
+  codesign "${app_codesign_args[@]}" "$APP_DIR" >/dev/null
   echo "Signed with: $CODESIGN_IDENTITY"
 else
   if [[ "$CONFIGURATION" == "release" ]]; then
@@ -65,7 +68,7 @@ else
   fi
 
   codesign --force --deep --sign - "$FRAMEWORKS_DIR/Sparkle.framework" >/dev/null
-  codesign --force --deep --sign - "$APP_DIR" >/dev/null
+  codesign --force --deep --sign - --entitlements "$ENTITLEMENTS" "$APP_DIR" >/dev/null
   echo "Signed ad-hoc. Screen Recording permission may need to be reset after each rebuild."
 fi
 

@@ -33,6 +33,6 @@ echo "Building app..."
 "$ROOT_DIR/Scripts/build-app.sh"
 
 echo "Opening $APP_DIR..."
-open "$APP_DIR"
+
 
 echo "Done. Keychain items, including the saved OpenAI key, were not changed."
