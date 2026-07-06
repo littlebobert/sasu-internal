@@ -1382,7 +1382,17 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             let sourceText = try clipboardTextService.readText()
             let conversationContext = transcriptContextForRequest()
-            let sourceMessage = ChatTranscriptMessage(role: .user, text: "Clipboard text: \(sourceText)")
+            let sourceReadings = JapaneseReadingService.readings(for: sourceText)
+            let readingCount = sourceReadings?.filter { $0.reading?.isEmpty == false }.count ?? 0
+            DiagnosticLogger.log(
+                "Generated local clipboard readings. sourceCharacters=\(sourceText.count) readingSegments=\(sourceReadings?.count ?? 0) segmentsWithReadings=\(readingCount)",
+                category: "Readings"
+            )
+            let sourceMessage = ChatTranscriptMessage(
+                role: .user,
+                text: "Clipboard text: \(sourceText)",
+                sourceReadings: sourceReadings
+            )
             transcriptMessages.append(sourceMessage)
 
             try Task.checkCancellation()
@@ -1390,7 +1400,7 @@ final class AppModel: ObservableObject {
 
             statusMessage = "Translating clipboard..."
             answerWindowController.show(appModel: self)
-            let result = try await openAIClient.translateClipboardTextWithReadings(
+            let result = try await openAIClient.translateClipboardText(
                 credential: credential,
                 modelID: modelID,
                 reasoningEffort: reasoningEffort,
@@ -1399,12 +1409,7 @@ final class AppModel: ObservableObject {
                 conversationContext: conversationContext
             )
             try Task.checkCancellation()
-            updateTranscriptMessage(
-                id: sourceMessage.id,
-                sourceReadings: result.sourceReadings
-            )
-            let readingCount = result.sourceReadings?.filter { $0.reading?.isEmpty == false }.count ?? 0
-            let translation = "Translation: \(Self.normalizedTranslationText(result.translation))"
+            let translation = "Translation: \(Self.normalizedTranslationText(result))"
 
             lastResponse = AssistantResponse(
                 text: translation,
@@ -1413,8 +1418,8 @@ final class AppModel: ObservableObject {
             )
             transcriptMessages.append(ChatTranscriptMessage(role: .assistant, text: translation))
             statusMessage = "Clipboard translation ready."
-            DiagnosticLogger.log("Clipboard translation ready. sourceCharacters=\(sourceText.count) readingSegments=\(result.sourceReadings?.count ?? 0) segmentsWithReadings=\(readingCount)", category: "OpenAI")
-            Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count), segmentsWithReadings=\(readingCount)")
+            DiagnosticLogger.log("Clipboard translation ready. sourceCharacters=\(sourceText.count) localSegmentsWithReadings=\(readingCount)", category: "OpenAI")
+            Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count), localSegmentsWithReadings=\(readingCount)")
         } catch is CancellationError {
             statusMessage = "Request stopped."
             errorMessage = nil
@@ -1614,24 +1619,6 @@ final class AppModel: ObservableObject {
                 browserPageContext: screenshot.browserPageContext,
                 browserPageCaptureIssue: screenshot.browserPageCaptureIssue
             )
-        )
-    }
-
-    private func updateTranscriptMessage(
-        id: UUID,
-        sourceReadings: [RubyTextSegment]?
-    ) {
-        guard let index = transcriptMessages.firstIndex(where: { $0.id == id }) else { return }
-        let message = transcriptMessages[index]
-        transcriptMessages[index] = ChatTranscriptMessage(
-            id: message.id,
-            role: message.role,
-            text: message.text,
-            imageData: message.imageData,
-            browserPageContext: message.browserPageContext,
-            browserPageCaptureIssue: message.browserPageCaptureIssue,
-            sourceReadings: sourceReadings,
-            actionSuggestion: message.actionSuggestion
         )
     }
 

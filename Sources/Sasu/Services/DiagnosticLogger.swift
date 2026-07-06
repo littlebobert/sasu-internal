@@ -4,6 +4,7 @@ import Foundation
 enum DiagnosticLogger {
     private static let queue = DispatchQueue(label: "dev.sasu.Sasu.DiagnosticLogger")
     private static let maxLogBytes = 512_000
+    private static let maxBugReportLogLines = 220
 
     private static var logsDirectory: URL {
         get throws {
@@ -65,7 +66,8 @@ enum DiagnosticLogger {
         let backendURL = bundle.object(forInfoDictionaryKey: "SASUBackendBaseURL") as? String ?? "unknown"
         let appcastURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? "unknown"
         let bundleID = bundle.bundleIdentifier ?? "unknown"
-        let logText = (try? String(contentsOf: logFileURL, encoding: .utf8)) ?? "No diagnostic log found."
+        let fullLogText = (try? String(contentsOf: logFileURL, encoding: .utf8)) ?? "No diagnostic log found."
+        let logText = recentLogText(from: fullLogText)
 
         return """
         Sasu Bug Report
@@ -103,6 +105,15 @@ enum DiagnosticLogger {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: Date())
+    }
+
+    private static func recentLogText(from fullLogText: String) -> String {
+        let lines = fullLogText.split(separator: "\n", omittingEmptySubsequences: false)
+        guard lines.count > maxBugReportLogLines else { return fullLogText }
+
+        return lines
+            .suffix(maxBugReportLogLines)
+            .joined(separator: "\n")
     }
 }
 
