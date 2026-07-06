@@ -22,6 +22,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         window?.isVisible == true
     }
 
+    func owns(_ candidate: NSWindow) -> Bool {
+        candidate === window
+    }
+
     func hide() {
         window?.orderOut(nil)
     }

@@ -81,7 +81,8 @@ python scripts/usage_report.py --month 2026-06 --active-days 14 --limit 30
 ```
 
 The report shows active tokens, recently active tokens, redeemed/open invites,
-monthly usage units, and top token labels by usage. For budget alerting, start
+tracked all-time usage units by default, and top token labels by usage. Pass
+`--month YYYY-MM` to report a single calendar month. For budget alerting, start
 with OpenAI project/key spend alerts and use this report for user-level follow-up.
 
 Deploy this subdirectory from the monorepo:

@@ -33,17 +33,21 @@ struct ScreenshotService {
         }
 
         let frontmostApplication = NSWorkspace.shared.frontmostApplication
-        let frontmostApplicationName = frontmostApplication?.localizedName
-        let frontmostWindowTitle = Self.frontmostWindowTitle(processIdentifier: frontmostApplication?.processIdentifier)
+        let foregroundContext = Self.foregroundWindowContext(frontmostApplication: frontmostApplication)
+        let hasVisibleSafariWindow = Self.hasVisibleWindow(bundleIdentifier: SafariPageCaptureService.safariBundleIdentifier)
 
         return ScreenshotPayload(
             pngData: pngData,
             displayID: displayID,
             pixelSize: CGSize(width: image.width, height: image.height),
-            frontmostApplicationName: frontmostApplicationName,
-            frontmostWindowTitle: frontmostWindowTitle,
+            frontmostApplicationName: foregroundContext.applicationName,
+            frontmostApplicationBundleIdentifier: foregroundContext.bundleIdentifier,
+            frontmostWindowTitle: foregroundContext.windowTitle,
             mouseLocation: mouseLocation,
-            cursorImageLocation: cursorImageLocation
+            cursorImageLocation: cursorImageLocation,
+            hasVisibleSafariWindow: hasVisibleSafariWindow,
+            browserPageContext: nil,
+            browserPageCaptureIssue: nil
         )
     }
 
@@ -184,6 +188,57 @@ struct ScreenshotService {
         return bitmap.cgImage
     }
 
+    private static func foregroundWindowContext(frontmostApplication: NSRunningApplication?) -> ForegroundWindowContext {
+        let currentProcessID = ProcessInfo.processInfo.processIdentifier
+        if let frontmostApplication,
+           frontmostApplication.processIdentifier != currentProcessID {
+            return ForegroundWindowContext(
+                applicationName: frontmostApplication.localizedName,
+                bundleIdentifier: frontmostApplication.bundleIdentifier,
+                windowTitle: frontmostWindowTitle(processIdentifier: frontmostApplication.processIdentifier)
+            )
+        }
+
+        return topWindowContextExcludingCurrentProcess()
+            ?? ForegroundWindowContext(
+                applicationName: frontmostApplication?.localizedName,
+                bundleIdentifier: frontmostApplication?.bundleIdentifier,
+                windowTitle: frontmostWindowTitle(processIdentifier: frontmostApplication?.processIdentifier)
+            )
+    }
+
+    private static func topWindowContextExcludingCurrentProcess() -> ForegroundWindowContext? {
+        let currentProcessID = ProcessInfo.processInfo.processIdentifier
+        guard
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else {
+            return nil
+        }
+
+        guard let window = windows.first(where: { window in
+            guard
+                let ownerPID = window[kCGWindowOwnerPID as String] as? pid_t,
+                let layer = window[kCGWindowLayer as String] as? Int,
+                ownerPID != currentProcessID
+            else {
+                return false
+            }
+
+            return layer == 0
+        }) else {
+            return nil
+        }
+
+        guard let ownerPID = window[kCGWindowOwnerPID as String] as? pid_t else { return nil }
+        let application = NSRunningApplication(processIdentifier: ownerPID)
+        return ForegroundWindowContext(
+            applicationName: application?.localizedName ?? window[kCGWindowOwnerName as String] as? String,
+            bundleIdentifier: application?.bundleIdentifier,
+            windowTitle: window[kCGWindowName as String] as? String
+        )
+    }
+
     private static func frontmostWindowTitle(processIdentifier: pid_t?) -> String? {
         guard let processIdentifier else { return nil }
         guard
@@ -204,6 +259,36 @@ struct ScreenshotService {
             return ownerPID == processIdentifier && layer == 0
         }?[kCGWindowName as String] as? String
     }
+
+    private static func hasVisibleWindow(bundleIdentifier: String) -> Bool {
+        guard
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else {
+            return false
+        }
+
+        return windows.contains { window in
+            guard
+                let ownerPID = window[kCGWindowOwnerPID as String] as? pid_t,
+                let layer = window[kCGWindowLayer as String] as? Int,
+                let isOnScreen = window[kCGWindowIsOnscreen as String] as? Bool
+            else {
+                return false
+            }
+
+            let application = NSRunningApplication(processIdentifier: ownerPID)
+            return layer == 0
+                && isOnScreen
+                && application?.bundleIdentifier == bundleIdentifier
+        }
+    }
+}
+
+private struct ForegroundWindowContext {
+    let applicationName: String?
+    let bundleIdentifier: String?
+    let windowTitle: String?
 }
 
 enum ScreenshotError: LocalizedError, Equatable {

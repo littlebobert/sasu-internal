@@ -21,6 +21,8 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
     let role: Role
     let text: String
     let imageData: Data?
+    let browserPageContext: BrowserPageContext?
+    let browserPageCaptureIssue: String?
     let actionSuggestion: HighlightSuggestion?
     let createdAt = Date()
 
@@ -28,11 +30,15 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
         role: Role,
         text: String,
         imageData: Data? = nil,
+        browserPageContext: BrowserPageContext? = nil,
+        browserPageCaptureIssue: String? = nil,
         actionSuggestion: HighlightSuggestion? = nil
     ) {
         self.role = role
         self.text = text
         self.imageData = imageData
+        self.browserPageContext = browserPageContext
+        self.browserPageCaptureIssue = browserPageCaptureIssue
         self.actionSuggestion = actionSuggestion
     }
 

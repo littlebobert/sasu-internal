@@ -35,6 +35,8 @@
 	<string>13.0</string>
 	<key>NSAccessibilityUsageDescription</key>
 	<string>Sasu needs Accessibility access to copy selected text and paste translations back into other apps.</string>
+	<key>NSAppleEventsUsageDescription</key>
+	<string>Sasu asks Safari for the active tab title, URL, and page text only when you capture Safari so it can explain the full page.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSPrincipalClass</key>

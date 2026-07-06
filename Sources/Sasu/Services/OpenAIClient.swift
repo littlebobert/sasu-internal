@@ -214,6 +214,25 @@ struct OpenAIClient {
             )
         }
 
+        if let browserPageContext = screenshot.browserPageContext {
+            parts.insert(
+                contentsOf: [
+                    "",
+                    "Browser page context:",
+                    "- Browser: \(browserPageContext.browserName)",
+                    "- Page title: \(browserPageContext.pageTitle.isEmpty ? "Unknown" : browserPageContext.pageTitle)",
+                    "- Page URL: \(browserPageContext.pageURL.isEmpty ? "Unknown" : browserPageContext.pageURL)",
+                    "- Extracted page text characters: \(browserPageContext.text.count) of \(browserPageContext.originalCharacterCount)\(browserPageContext.isTruncated ? " (truncated)" : "")",
+                    "",
+                    "Extracted page text:",
+                    browserPageContext.text,
+                    "",
+                    "Use the extracted page text to answer questions about the full Safari page, including content below the visible viewport. Use the screenshot as the source of truth for visible UI, layout, cursor position, and click targets."
+                ],
+                at: parts.count - 1
+            )
+        }
+
         if let conversationContext, !conversationContext.isEmpty {
             parts.insert(
                 contentsOf: [

@@ -373,6 +373,11 @@ struct SettingsView: View {
                     }
                 }
 
+                Divider()
+
+                Text("Screen Recording")
+                    .font(.caption.bold())
+
                 Text(appModel.statusMessage)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -400,6 +405,33 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Divider()
+
+                Text("Safari Enhancement")
+                    .font(.caption.bold())
+
+                Toggle(
+                    "Automatically include full Safari page content",
+                    isOn: $appModel.automaticallyIncludeSafariPageContent
+                )
+                .toggleStyle(.checkbox)
+
+                Text("When Safari is frontmost, Sasu can include the active tab title, URL, and page text with your screenshot so it can explain the whole page. macOS may ask for Automation permission the first time.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack {
+                    Button("Open Automation Settings") {
+                        appModel.openAutomationSettings()
+                    }
+
+                    Text("Safari may also require Safari > Develop > Developer Settings > Allow JavaScript from Apple Events.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)

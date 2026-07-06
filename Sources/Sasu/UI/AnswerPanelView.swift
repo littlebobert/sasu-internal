@@ -296,21 +296,36 @@ private struct TranscriptMessageView: View {
                 .foregroundStyle(roleColor)
 
             if let image = message.image {
-                Image(nsImage: image)
-                    .resizable()
-                    .scaledToFill()
-                    .frame(width: 120, height: 76)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
-                    }
-                    .onTapGesture(count: 2) {
-                        if let imageData = message.imageData {
-                            appModel.showScreenshotWindow(imageData: imageData)
+                HStack(alignment: .top, spacing: 10) {
+                    Image(nsImage: image)
+                        .resizable()
+                        .scaledToFill()
+                        .frame(width: 120, height: 76)
+                        .clipShape(RoundedRectangle(cornerRadius: 8))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
                         }
+                        .onTapGesture(count: 2) {
+                            if let imageData = message.imageData {
+                                appModel.showScreenshotWindow(imageData: imageData)
+                            }
+                        }
+                        .help("Double-click to open screenshot")
+
+                    Text(message.text)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if let browserPageContext = message.browserPageContext {
+                        safariPageIncludedBadge(browserPageContext)
+                    } else if let browserPageCaptureIssue = message.browserPageCaptureIssue {
+                        safariPageIssueBadge(browserPageCaptureIssue)
                     }
-                    .help("Double-click to open screenshot")
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else if let clipboardSourceText {
                 (Text("Clipboard text: ") + Text(clipboardSourceText))
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -321,6 +336,44 @@ private struct TranscriptMessageView: View {
                     .padding(.bottom, 6)
             }
         }
+    }
+
+    private func safariPageIncludedBadge(_ context: BrowserPageContext) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Full Safari page included")
+                .font(.caption.bold())
+                .foregroundStyle(.green)
+
+            Text("\(context.text.count) characters from \(context.displayTitle)")
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.green.opacity(0.10))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help("Sasu included extracted Safari page text from below the visible viewport.")
+    }
+
+    private func safariPageIssueBadge(_ issue: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Safari page not included")
+                .font(.caption.bold())
+                .foregroundStyle(.orange)
+
+            Text(issue)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.vertical, 6)
+        .padding(.horizontal, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color.orange.opacity(0.12))
+        .clipShape(RoundedRectangle(cornerRadius: 8))
+        .help(issue)
     }
 
     private var roleColor: Color {

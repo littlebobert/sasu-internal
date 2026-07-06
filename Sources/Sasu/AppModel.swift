@@ -31,6 +31,9 @@ final class AppModel: ObservableObject {
     @Published var imageDetail: String {
         didSet { defaults.set(imageDetail, forKey: Self.imageDetailKey) }
     }
+    @Published var automaticallyIncludeSafariPageContent: Bool {
+        didSet { defaults.set(automaticallyIncludeSafariPageContent, forKey: Self.automaticallyIncludeSafariPageContentKey) }
+    }
     @Published var selectedModelPresetID: String {
         didSet {
             defaults.set(selectedModelPresetID, forKey: Self.selectedModelPresetIDKey)
@@ -100,6 +103,8 @@ final class AppModel: ObservableObject {
     private static let reasoningEffortKey = "reasoningEffort"
     private static let serviceTierKey = "serviceTier"
     private static let imageDetailKey = "imageDetail"
+    private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
+    private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
     private static let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private static let hotkeyModifiersKey = "hotkeyModifiers"
@@ -128,6 +133,7 @@ final class AppModel: ObservableObject {
     private let highlightGroundingService: HighlightGroundingService
     private let clipboardTextService: ClipboardTextService
     private let selectionAutomationService: SelectionAutomationService
+    private let safariPageCaptureService: SafariPageCaptureService
     private let answerWindowController: AnswerWindowController
     private let settingsWindowController: SettingsWindowController
     private let screenshotPreviewWindowController: ScreenshotPreviewWindowController
@@ -162,7 +168,8 @@ final class AppModel: ObservableObject {
         backendClient: BackendClient = BackendClient(),
         highlightGroundingService: HighlightGroundingService = HighlightGroundingService(),
         clipboardTextService: ClipboardTextService = ClipboardTextService(),
-        selectionAutomationService: SelectionAutomationService = SelectionAutomationService()
+        selectionAutomationService: SelectionAutomationService = SelectionAutomationService(),
+        safariPageCaptureService: SafariPageCaptureService = SafariPageCaptureService()
     ) {
         self.defaults = defaults
         self.keychain = keychain
@@ -172,6 +179,7 @@ final class AppModel: ObservableObject {
         self.highlightGroundingService = highlightGroundingService
         self.clipboardTextService = clipboardTextService
         self.selectionAutomationService = selectionAutomationService
+        self.safariPageCaptureService = safariPageCaptureService
         self.answerWindowController = AnswerWindowController()
         self.settingsWindowController = SettingsWindowController()
         self.screenshotPreviewWindowController = ScreenshotPreviewWindowController()
@@ -194,6 +202,11 @@ final class AppModel: ObservableObject {
         self.reasoningEffort = initialReasoningEffort
         self.serviceTier = initialServiceTier
         self.imageDetail = defaults.string(forKey: Self.imageDetailKey) ?? ModelPreset.gpt55HighFast.imageDetail
+        if defaults.object(forKey: Self.automaticallyIncludeSafariPageContentKey) == nil {
+            self.automaticallyIncludeSafariPageContent = true
+        } else {
+            self.automaticallyIncludeSafariPageContent = defaults.bool(forKey: Self.automaticallyIncludeSafariPageContentKey)
+        }
         let savedPresetID = defaults.string(forKey: Self.selectedModelPresetIDKey)
         self.selectedModelPresetID = Self.availablePresetID(savedPresetID) ?? ModelPreset.matching(
             modelID: initialModelID,
@@ -241,6 +254,8 @@ final class AppModel: ObservableObject {
 
     func start() {
         DiagnosticLogger.log("AppModel start. screenRecording=\(CGPreflightScreenCaptureAccess()) accessMode=\(accessMode.rawValue) hasInviteToken=\(hasStoredBackendAccessToken) hasAPIKey=\(hasStoredAPIKey)", category: "Lifecycle")
+        closeUnmanagedSettingsWindows()
+        closeRestoredSettingsWindowsAfterLaunch()
         if hotkeyManager == nil {
             updateHotkeyRegistration()
         }
@@ -441,6 +456,11 @@ final class AppModel: ObservableObject {
         settingsWindowController.show(appModel: self) { [weak self] in
             self?.endStandardWindowPresentation(Self.settingsWindowPresentationID)
         }
+        closeUnmanagedSettingsWindows()
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            closeUnmanagedSettingsWindows()
+        }
     }
 
     private func beginStandardWindowPresentation(_ identifier: String) {
@@ -456,6 +476,25 @@ final class AppModel: ObservableObject {
     private func applyAnswerWindowFloatingPolicy() {
         let shouldFloat = standardWindowPresentationIDs.isEmpty && !isUpdatePresentationActive
         answerWindowController.setFloatingEnabled(shouldFloat)
+    }
+
+    private func closeUnmanagedSettingsWindows() {
+        NSApp.windows
+            .filter { window in
+                window.title == "Sasu Settings" && !settingsWindowController.owns(window)
+            }
+            .forEach { window in
+                window.close()
+            }
+    }
+
+    private func closeRestoredSettingsWindowsAfterLaunch() {
+        Task { @MainActor in
+            for delay in [100_000_000, 500_000_000, 1_500_000_000] {
+                try? await Task.sleep(nanoseconds: UInt64(delay))
+                closeUnmanagedSettingsWindows()
+            }
+        }
     }
 
     func saveWindowStateForNextLaunch() {
@@ -904,6 +943,7 @@ final class AppModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor in
                 self?.cancelUserAttentionRequestIfNeeded()
+                self?.closeUnmanagedSettingsWindows()
                 self?.restoreHighlightWindowsAfterUserReturn()
                 self?.restoreWindowsAfterScreenRecordingPermissionIfNeeded()
                 self?.refreshAccessibilityPermissionState()
@@ -1012,6 +1052,29 @@ final class AppModel: ObservableObject {
         errorMessage = "Open System Settings > Privacy & Security > Accessibility, then enable Sasu."
     }
 
+    func openAutomationSettings() {
+        let urls = [
+            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation"),
+            URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
+        ].compactMap { $0 }
+
+        statusMessage = "Opened Automation settings. Enable Safari under Sasu, then capture Safari again."
+
+        for url in urls where Self.openSystemSettings(url: url) {
+            Task { @MainActor in
+                for delay in [250_000_000, 750_000_000, 1_500_000_000] {
+                    try? await Task.sleep(nanoseconds: UInt64(delay))
+                    if Self.activateSystemSettings() {
+                        break
+                    }
+                }
+            }
+            return
+        }
+
+        errorMessage = "Open System Settings > Privacy & Security > Automation, then enable Safari under Sasu."
+    }
+
     func requestAccessibilityAccess() {
         isAwaitingAccessibilityGrant = true
         shouldOfferAccessibilityRelaunch = false
@@ -1031,7 +1094,6 @@ final class AppModel: ObservableObject {
             return
         }
 
-        ScreenRecordingPermissionStore.markSetupStarted()
         DiagnosticLogger.log("Presenting Screen Recording primer.", category: "Permissions")
 
         screenRecordingPrimerTask?.cancel()
@@ -1266,27 +1328,30 @@ final class AppModel: ObservableObject {
         Self.logger.info("Preparing screenshot for user query.")
 
         do {
-            let hiddenWindows = Self.hideVisibleSasuWindowsForCapture()
-            if !hiddenWindows.isEmpty {
-                try await Task.sleep(nanoseconds: 150_000_000)
-            }
             try Task.checkCancellation()
-            defer {
-                Self.restoreWindows(hiddenWindows)
-            }
-
-            let screenshot = try await screenshotService.captureMainDisplay()
+            let capturedScreenshot = try await captureMainDisplayWithSasuWindowsHidden()
+            let screenshot = await screenshotIncludingSafariPageContextIfNeeded(capturedScreenshot)
             let isFirstScreenshot = transcriptMessages.isEmpty
             lastScreenshot = screenshot
             screenshotPreviewImage = NSImage(data: screenshot.pngData)
             isScreenshotPrepared = true
             appendScreenshotMessage(for: screenshot)
-            followUpText = isFirstScreenshot ? "Explain this" : "What now?"
+            followUpText = isFirstScreenshot
+                ? (screenshot.browserPageContext == nil ? "Explain this" : "Explain this page")
+                : "What now?"
             querySelectionNonce += 1
             currentHighlightSuggestion = nil
             hideHighlight()
-            statusMessage = "Screenshot ready. Type your question and press Send."
-            Self.logger.info("Prepared screenshot. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
+            if let browserPageContext = screenshot.browserPageContext {
+                statusMessage = "Screenshot and Safari page ready. Type your question and press Send."
+                Self.logger.info("Prepared screenshot with Safari page. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height)), pageCharacters=\(browserPageContext.text.count)")
+            } else if screenshot.browserPageCaptureIssue != nil {
+                statusMessage = "Screenshot ready, but Safari page content was not included."
+                Self.logger.info("Prepared screenshot without Safari page after attempted Safari capture. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
+            } else {
+                statusMessage = "Screenshot ready. Type your question and press Send."
+                Self.logger.info("Prepared screenshot. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
+            }
         } catch is CancellationError {
             statusMessage = "Capture stopped."
             errorMessage = nil
@@ -1463,16 +1528,9 @@ final class AppModel: ObservableObject {
             if reuseLastScreenshot, let existingScreenshot = lastScreenshot {
                 screenshot = existingScreenshot
             } else {
-                let hiddenWindows = Self.hideVisibleSasuWindowsForCapture()
-                if !hiddenWindows.isEmpty {
-                    try await Task.sleep(nanoseconds: 150_000_000)
-                }
                 try Task.checkCancellation()
-                defer {
-                    Self.restoreWindows(hiddenWindows)
-                }
-
-                screenshot = try await screenshotService.captureMainDisplay()
+                let capturedScreenshot = try await captureMainDisplayWithSasuWindowsHidden()
+                screenshot = await screenshotIncludingSafariPageContextIfNeeded(capturedScreenshot)
                 lastScreenshot = screenshot
                 screenshotPreviewImage = NSImage(data: screenshot.pngData)
                 isScreenshotPrepared = true
@@ -1539,13 +1597,94 @@ final class AppModel: ObservableObject {
     }
 
     private func appendScreenshotMessage(for screenshot: ScreenshotPayload) {
+        let screenshotDescription = "\(Int(screenshot.pixelSize.width)) x \(Int(screenshot.pixelSize.height))"
+
         transcriptMessages.append(
             ChatTranscriptMessage(
                 role: .screenshot,
-                text: "\(Int(screenshot.pixelSize.width)) x \(Int(screenshot.pixelSize.height))",
-                imageData: screenshot.pngData
+                text: screenshotDescription,
+                imageData: screenshot.pngData,
+                browserPageContext: screenshot.browserPageContext,
+                browserPageCaptureIssue: screenshot.browserPageCaptureIssue
             )
         )
+    }
+
+    private func captureMainDisplayWithSasuWindowsHidden() async throws -> ScreenshotPayload {
+        let hiddenWindows = Self.hideVisibleSasuWindowsForCapture()
+        if !hiddenWindows.isEmpty {
+            try await Task.sleep(nanoseconds: 150_000_000)
+        }
+        try Task.checkCancellation()
+        defer {
+            Self.restoreWindows(hiddenWindows)
+        }
+
+        return try await screenshotService.captureMainDisplay()
+    }
+
+    private func screenshotIncludingSafariPageContextIfNeeded(_ screenshot: ScreenshotPayload) async -> ScreenshotPayload {
+        guard automaticallyIncludeSafariPageContent else { return screenshot }
+        let shouldTrySafariCapture = screenshot.frontmostApplicationBundleIdentifier == SafariPageCaptureService.safariBundleIdentifier
+            || screenshot.hasVisibleSafariWindow
+        guard shouldTrySafariCapture else {
+            DiagnosticLogger.log("Safari page capture skipped. foregroundBundle=\(screenshot.frontmostApplicationBundleIdentifier ?? "unknown") hasVisibleSafariWindow=\(screenshot.hasVisibleSafariWindow)", category: "Safari")
+            return screenshot
+        }
+
+        if !defaults.bool(forKey: Self.hasAnsweredSafariPageCapturePrimerKey) {
+            guard presentSafariPageCapturePrimer() else { return screenshot }
+        }
+
+        statusMessage = "Reading Safari page..."
+        do {
+            try Task.checkCancellation()
+            DiagnosticLogger.log("Attempting Safari page capture. foregroundBundle=\(screenshot.frontmostApplicationBundleIdentifier ?? "unknown") hasVisibleSafariWindow=\(screenshot.hasVisibleSafariWindow)", category: "Safari")
+            let pageContext = try safariPageCaptureService.captureCurrentPage()
+            try Task.checkCancellation()
+            errorMessage = nil
+            DiagnosticLogger.log("Safari page capture ready. title=\(pageContext.displayTitle) characters=\(pageContext.text.count)", category: "Safari")
+            return screenshot.addingBrowserPageContext(pageContext)
+        } catch is CancellationError {
+            return screenshot
+        } catch {
+            let issue = error.localizedDescription
+            errorMessage = issue
+            statusMessage = "Screenshot ready, but Safari page content was not included."
+            Self.logger.error("Safari page capture failed: \(issue, privacy: .public)")
+            DiagnosticLogger.log("Safari page capture failed: \(issue)", category: "Safari")
+            return screenshot.addingBrowserPageCaptureIssue(issue)
+        }
+    }
+
+    private func presentSafariPageCapturePrimer() -> Bool {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Safari Enhancement"
+        alert.informativeText = """
+        Sasu can give guidance based on the full Safari page, not just what’s visible.
+
+        When you capture Safari, Sasu can include the active tab title, URL, and page text with your screenshot. It only reads Safari page content when you capture, and sends it with your question.
+
+        macOS may ask whether Sasu can control Safari. Safari may also require Safari > Develop > Developer Settings > Allow JavaScript from Apple Events.
+        """
+        alert.addButton(withTitle: "Enable for Safari")
+        alert.addButton(withTitle: "Not Now")
+
+        defaults.set(true, forKey: Self.hasAnsweredSafariPageCapturePrimerKey)
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            DiagnosticLogger.log("User enabled Safari page capture.", category: "Permissions")
+            return true
+        default:
+            DiagnosticLogger.log("User declined Safari page capture.", category: "Permissions")
+            automaticallyIncludeSafariPageContent = false
+            statusMessage = "Safari page capture is off. You can turn it on in Settings."
+            return false
+        }
     }
 
     private func transcriptContextForRequest() -> String? {

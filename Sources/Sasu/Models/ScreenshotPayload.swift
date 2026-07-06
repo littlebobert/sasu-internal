@@ -7,9 +7,13 @@ struct ScreenshotPayload {
     let displayID: CGDirectDisplayID
     let pixelSize: CGSize
     let frontmostApplicationName: String?
+    let frontmostApplicationBundleIdentifier: String?
     let frontmostWindowTitle: String?
     let mouseLocation: CGPoint
     let cursorImageLocation: CGPoint?
+    let hasVisibleSafariWindow: Bool
+    let browserPageContext: BrowserPageContext?
+    let browserPageCaptureIssue: String?
 
     var base64PNG: String {
         pngData.base64EncodedString()
@@ -19,6 +23,38 @@ struct ScreenshotPayload {
         get throws {
             try UploadImage.make(from: self)
         }
+    }
+
+    func addingBrowserPageContext(_ browserPageContext: BrowserPageContext) -> ScreenshotPayload {
+        ScreenshotPayload(
+            pngData: pngData,
+            displayID: displayID,
+            pixelSize: pixelSize,
+            frontmostApplicationName: frontmostApplicationName,
+            frontmostApplicationBundleIdentifier: frontmostApplicationBundleIdentifier,
+            frontmostWindowTitle: frontmostWindowTitle,
+            mouseLocation: mouseLocation,
+            cursorImageLocation: cursorImageLocation,
+            hasVisibleSafariWindow: hasVisibleSafariWindow,
+            browserPageContext: browserPageContext,
+            browserPageCaptureIssue: nil
+        )
+    }
+
+    func addingBrowserPageCaptureIssue(_ issue: String) -> ScreenshotPayload {
+        ScreenshotPayload(
+            pngData: pngData,
+            displayID: displayID,
+            pixelSize: pixelSize,
+            frontmostApplicationName: frontmostApplicationName,
+            frontmostApplicationBundleIdentifier: frontmostApplicationBundleIdentifier,
+            frontmostWindowTitle: frontmostWindowTitle,
+            mouseLocation: mouseLocation,
+            cursorImageLocation: cursorImageLocation,
+            hasVisibleSafariWindow: hasVisibleSafariWindow,
+            browserPageContext: browserPageContext,
+            browserPageCaptureIssue: issue
+        )
     }
 }
 
