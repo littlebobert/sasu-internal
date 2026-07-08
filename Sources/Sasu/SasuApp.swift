@@ -5,6 +5,14 @@ import SwiftUI
 final class AppDelegate: NSObject, NSApplicationDelegate {
     weak var appModel: AppModel?
 
+    func applicationWillFinishLaunching(_ notification: Notification) {
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        appModel?.closeUnmanagedSettingsWindows()
+    }
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
@@ -56,7 +64,6 @@ struct SasuApp: App {
         appDelegate.appModel = appModel
 
         Task { @MainActor in
-            NSApp.setActivationPolicy(.regular)
             appModel.start()
             appModel.showLaunchWindowIfNeeded()
         }

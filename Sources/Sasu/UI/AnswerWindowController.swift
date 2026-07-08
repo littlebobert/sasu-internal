@@ -153,9 +153,6 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         panel.isExcludedFromWindowsMenu = false
         panel.isReleasedWhenClosed = false
-        if !appModel.isFirstLaunchOnboardingVisible {
-            panel.setFrameAutosaveName("SasuAnswerWindow")
-        }
         panel.toolbar = makeToolbar()
         panel.toolbar?.displayMode = .labelOnly
         panel.toolbar?.sizeMode = .regular
@@ -259,7 +256,6 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     private func resizeForOnboardingIfNeeded(appModel: AppModel) {
         guard appModel.isFirstLaunchOnboardingVisible, let window else { return }
 
-        window.setFrameAutosaveName("")
         window.contentView?.layoutSubtreeIfNeeded()
         let fittingSize = window.contentView?.fittingSize ?? NSSize(width: 620, height: 400)
         let contentSize = NSSize(

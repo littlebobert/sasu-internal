@@ -186,7 +186,7 @@ struct AnswerPanelView: View {
                         .padding(.trailing, 8)
                     }
                     .onChange(of: appModel.transcriptMessages.count) { _ in
-                        scrollTranscriptToBottom(proxy)
+                        scrollTranscriptToBottomAfterLayoutSettles(proxy)
                     }
                     .onChange(of: appModel.currentHighlightSuggestion) { _ in
                         scrollTranscriptToBottom(proxy)
@@ -209,6 +209,18 @@ struct AnswerPanelView: View {
         DispatchQueue.main.async {
             withAnimation(.easeOut(duration: 0.2)) {
                 proxy.scrollTo("transcript-bottom", anchor: .bottom)
+            }
+        }
+    }
+
+    private func scrollTranscriptToBottomAfterLayoutSettles(_ proxy: ScrollViewProxy) {
+        scrollTranscriptToBottom(proxy)
+
+        for delay in [0.05, 0.2] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                withAnimation(.easeOut(duration: 0.15)) {
+                    proxy.scrollTo("transcript-bottom", anchor: .bottom)
+                }
             }
         }
     }

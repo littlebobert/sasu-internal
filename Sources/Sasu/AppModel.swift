@@ -305,9 +305,9 @@ final class AppModel: ObservableObject {
         let shouldShowSettings = !hasConfiguredAccess || shouldRestoreSettings
 
         Task {
-            // Let the app finish installing menu/activation state before presenting launch UI.
-            try? await Task.sleep(nanoseconds: 100_000_000)
             await MainActor.run {
+                closeUnmanagedSettingsWindows()
+                NSApp.setActivationPolicy(.regular)
                 if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
                     refreshScreenRecordingPermissionState()
                     isFirstLaunchOnboardingVisible = false
@@ -478,7 +478,7 @@ final class AppModel: ObservableObject {
         answerWindowController.setFloatingEnabled(shouldFloat)
     }
 
-    private func closeUnmanagedSettingsWindows() {
+    func closeUnmanagedSettingsWindows() {
         NSApp.windows
             .filter { window in
                 window.title == "Sasu Settings" && !settingsWindowController.owns(window)
