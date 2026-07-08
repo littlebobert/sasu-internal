@@ -282,6 +282,15 @@ private final class LinkTextView: NSTextView {
         return super.hitTest(point)
     }
 
+    override func scrollWheel(with event: NSEvent) {
+        guard let scrollView = ancestorScrollView() else {
+            super.scrollWheel(with: event)
+            return
+        }
+
+        scrollView.scrollWheel(with: event)
+    }
+
     @objc private func copyLink(_ sender: NSMenuItem) {
         guard let url = sender.representedObject as? URL else { return }
         NSPasteboard.general.clearContents()
@@ -329,6 +338,18 @@ private final class LinkTextView: NSTextView {
             .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
             .insetBy(dx: -4, dy: -4)
         return hitRect.contains(point)
+    }
+
+    private func ancestorScrollView() -> NSScrollView? {
+        var ancestor = superview
+        while let current = ancestor {
+            if let scrollView = current as? NSScrollView {
+                return scrollView
+            }
+            ancestor = current.superview
+        }
+
+        return nil
     }
 
     private func linkURL(at event: NSEvent) -> URL? {
