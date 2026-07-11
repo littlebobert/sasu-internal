@@ -67,7 +67,7 @@ private struct AboutView: View {
             Text("On-screen guidance for macOS")
                 .multilineTextAlignment(.center)
 
-            Link("Made in Japan", destination: URL(string: "http://sasu.jp")!)
+            Link("Made in Japan", destination: URL(string: "https://sasu.jp")!)
                 .font(.callout)
 
             Button("Report a Bug") {

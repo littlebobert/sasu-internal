@@ -28,7 +28,7 @@ def make_client(
         image_request_usage_units=image_request_usage_units,
         text_request_usage_units=text_request_usage_units,
         unlimited_token_labels=unlimited_token_labels or set(),
-        invite_base_url="http://sasu.jp/#invite=",
+        invite_base_url="https://sasu.jp/sasu-invite#invite=",
     )
     app = create_app(settings)
     client = TestClient(app)

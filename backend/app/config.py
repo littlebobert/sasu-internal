@@ -57,5 +57,5 @@ class Settings:
             image_request_usage_units=_get_int("IMAGE_REQUEST_USAGE_UNITS", 10),
             text_request_usage_units=_get_int("TEXT_REQUEST_USAGE_UNITS", 1),
             unlimited_token_labels=_get_csv_set("UNLIMITED_TOKEN_LABELS"),
-            invite_base_url=os.environ.get("INVITE_BASE_URL", "https://littlebobert.github.io/sasu-invite.html#invite="),
+            invite_base_url=os.environ.get("INVITE_BASE_URL", "https://sasu.jp/sasu-invite#invite="),
         )
