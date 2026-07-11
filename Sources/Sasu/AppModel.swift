@@ -105,6 +105,7 @@ final class AppModel: ObservableObject {
     private static let imageDetailKey = "imageDetail"
     private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
+    private static let safariPageSendConfirmationCharacterThreshold = 8_000
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
     private static let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private static let hotkeyModifiersKey = "hotkeyModifiers"
@@ -1536,7 +1537,7 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             let credential = try requestCredential()
 
-            let screenshot: ScreenshotPayload
+            var screenshot: ScreenshotPayload
             if reuseLastScreenshot, let existingScreenshot = lastScreenshot {
                 screenshot = existingScreenshot
             } else {
@@ -1548,6 +1549,8 @@ final class AppModel: ObservableObject {
                 isScreenshotPrepared = true
                 appendScreenshotMessage(for: screenshot)
             }
+            try Task.checkCancellation()
+            screenshot = confirmLargeSafariPageContextBeforeSending(screenshot)
             try Task.checkCancellation()
             Self.logger.info("Screenshot ready. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
 
@@ -1619,6 +1622,60 @@ final class AppModel: ObservableObject {
                 browserPageContext: screenshot.browserPageContext,
                 browserPageCaptureIssue: screenshot.browserPageCaptureIssue
             )
+        )
+    }
+
+    private func confirmLargeSafariPageContextBeforeSending(_ screenshot: ScreenshotPayload) -> ScreenshotPayload {
+        guard let pageContext = screenshot.browserPageContext,
+              pageContext.text.count > Self.safariPageSendConfirmationCharacterThreshold else {
+            return screenshot
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Include Full Safari Page?"
+        alert.informativeText = """
+        This page contains \(pageContext.text.count) characters. Including it may make the response slower.
+
+        Do you want to include it?
+        """
+        alert.addButton(withTitle: "Include")
+        alert.addButton(withTitle: "Do Not Include")
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            DiagnosticLogger.log(
+                "User included large Safari page context. characters=\(pageContext.text.count)",
+                category: "Safari"
+            )
+            return screenshot
+        }
+
+        let reason = "You chose not to include the \(pageContext.text.count)-character Safari page context."
+        let screenshotWithoutPageContext = screenshot.removingBrowserPageContext(reason: reason)
+        lastScreenshot = screenshotWithoutPageContext
+        replaceLatestScreenshotMessage(with: screenshotWithoutPageContext)
+        DiagnosticLogger.log(
+            "User excluded large Safari page context. characters=\(pageContext.text.count)",
+            category: "Safari"
+        )
+        return screenshotWithoutPageContext
+    }
+
+    private func replaceLatestScreenshotMessage(with screenshot: ScreenshotPayload) {
+        guard let index = transcriptMessages.lastIndex(where: { $0.role == .screenshot }) else { return }
+
+        let existingMessage = transcriptMessages[index]
+        transcriptMessages[index] = ChatTranscriptMessage(
+            id: existingMessage.id,
+            role: existingMessage.role,
+            text: existingMessage.text,
+            imageData: existingMessage.imageData,
+            browserPageContext: screenshot.browserPageContext,
+            browserPageCaptureIssue: screenshot.browserPageCaptureIssue,
+            sourceReadings: existingMessage.sourceReadings,
+            actionSuggestion: existingMessage.actionSuggestion
         )
     }
 

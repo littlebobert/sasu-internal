@@ -56,6 +56,22 @@ struct ScreenshotPayload {
             browserPageCaptureIssue: issue
         )
     }
+
+    func removingBrowserPageContext(reason: String) -> ScreenshotPayload {
+        ScreenshotPayload(
+            pngData: pngData,
+            displayID: displayID,
+            pixelSize: pixelSize,
+            frontmostApplicationName: frontmostApplicationName,
+            frontmostApplicationBundleIdentifier: frontmostApplicationBundleIdentifier,
+            frontmostWindowTitle: frontmostWindowTitle,
+            mouseLocation: mouseLocation,
+            cursorImageLocation: cursorImageLocation,
+            hasVisibleSafariWindow: hasVisibleSafariWindow,
+            browserPageContext: nil,
+            browserPageCaptureIssue: reason
+        )
+    }
 }
 
 struct UploadImage {
