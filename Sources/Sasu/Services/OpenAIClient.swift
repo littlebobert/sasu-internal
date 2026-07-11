@@ -256,10 +256,10 @@ struct OpenAIClient {
     ) -> String {
         let direction = TranslationDirection.forUserInterface
         var instructions = [
-            "- Translate the source text into natural \(direction.targetLanguage).",
-            "- The text is usually in \(direction.expectedSourceLanguage), but translate appropriately if it is in another language.",
-            "- \(direction.alreadyInTargetInstruction)",
-            "- Never repeat the source text verbatim unless every word is already in \(direction.targetLanguage).",
+            "- If the source text is primarily in \(direction.expectedSourceLanguage), translate it into natural \(direction.targetLanguage).",
+            "- If the source text is primarily in \(direction.targetLanguage), translate it into natural \(direction.expectedSourceLanguage) instead.",
+            "- For mixed English and Japanese text, translate into the language opposite the source text's primary language.",
+            "- Do not return the source text unchanged unless it contains no translatable language.",
             "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful."
         ]
 

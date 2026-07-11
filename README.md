@@ -1,6 +1,6 @@
 # Sasu
 
-Sasu is a macOS app that explains Japanese websites, forms, and other on-screen content without changing the page layout.
+Sasu is a macOS app that explains Japanese or English websites, forms, and other on-screen content without changing the page layout.
 
 It captures only when you ask. Depending on your settings, Sasu can send a screenshot, selected text, clipboard text, or Safari page context to OpenAI directly with your own API key, or through the hosted invite backend.
 
