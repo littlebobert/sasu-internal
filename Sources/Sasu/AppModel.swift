@@ -34,6 +34,9 @@ final class AppModel: ObservableObject {
     @Published var automaticallyIncludeSafariPageContent: Bool {
         didSet { defaults.set(automaticallyIncludeSafariPageContent, forKey: Self.automaticallyIncludeSafariPageContentKey) }
     }
+    @Published var translationLanguagePair: TranslationLanguagePair {
+        didSet { defaults.set(translationLanguagePair.rawValue, forKey: Self.translationLanguagePairKey) }
+    }
     @Published var transcriptTextSize: Double {
         didSet {
             let clampedSize = Self.clampedTranscriptTextSize(transcriptTextSize)
@@ -119,6 +122,7 @@ final class AppModel: ObservableObject {
     private static let serviceTierKey = "serviceTier"
     private static let imageDetailKey = "imageDetail"
     private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
+    private static let translationLanguagePairKey = "translationLanguagePair"
     private static let transcriptTextSizeKey = "transcriptTextSize"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let safariPageSendConfirmationCharacterThreshold = 8_000
@@ -229,6 +233,9 @@ final class AppModel: ObservableObject {
         } else {
             self.automaticallyIncludeSafariPageContent = defaults.bool(forKey: Self.automaticallyIncludeSafariPageContentKey)
         }
+        self.translationLanguagePair = TranslationLanguagePair(
+            rawValue: defaults.string(forKey: Self.translationLanguagePairKey) ?? ""
+        ) ?? .automatic
         if defaults.object(forKey: Self.transcriptTextSizeKey) == nil {
             self.transcriptTextSize = Self.defaultTranscriptTextSize
         } else {
@@ -1463,6 +1470,9 @@ final class AppModel: ObservableObject {
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
                 sourceText: sourceText,
+                translationDirection: TranslationDirection.forUserInterface(
+                    languagePair: translationLanguagePair
+                ),
                 conversationContext: conversationContext
             )
             try Task.checkCancellation()
@@ -1534,6 +1544,9 @@ final class AppModel: ObservableObject {
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
                 sourceText: sourceText,
+                translationDirection: TranslationDirection.forUserInterface(
+                    languagePair: translationLanguagePair
+                ),
                 conversationContext: nil,
                 forSelectionReplacement: true
             )

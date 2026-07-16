@@ -66,6 +66,7 @@ struct OpenAIClient {
         reasoningEffort: String,
         serviceTier: String,
         sourceText: String,
+        translationDirection: TranslationDirection = .forUserInterface,
         conversationContext: String?,
         forSelectionReplacement: Bool = false
     ) async throws -> String {
@@ -77,6 +78,7 @@ struct OpenAIClient {
                     content: [
                         .inputText(buildClipboardTranslationPrompt(
                             sourceText: sourceText,
+                            direction: translationDirection,
                             conversationContext: conversationContext,
                             forSelectionReplacement: forSelectionReplacement
                         ))
@@ -251,14 +253,14 @@ struct OpenAIClient {
 
     private func buildClipboardTranslationPrompt(
         sourceText: String,
+        direction: TranslationDirection,
         conversationContext: String?,
         forSelectionReplacement: Bool
     ) -> String {
-        let direction = TranslationDirection.forUserInterface
         var instructions = [
             "- If the source text is primarily in \(direction.expectedSourceLanguage), translate it into natural \(direction.targetLanguage).",
             "- If the source text is primarily in \(direction.targetLanguage), translate it into natural \(direction.expectedSourceLanguage) instead.",
-            "- For mixed English and Japanese text, translate into the language opposite the source text's primary language.",
+            "- For text mixing \(direction.expectedSourceLanguage) and \(direction.targetLanguage), translate into the language opposite the source text's primary language.",
             "- Do not return the source text unchanged unless it contains no translatable language.",
             "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful."
         ]

@@ -11,6 +11,7 @@ struct SettingsView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
                     appearanceSection
+                    translationSection
                     hotkeySection
                     accessSection
                     modelSection
@@ -50,6 +51,34 @@ struct SettingsView: View {
                     .disabled(appModel.transcriptTextSize == AppModel.defaultTranscriptTextSize)
 
                     Text("You can also use ⌘+ and ⌘−.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var translationSection: some View {
+        GroupBox("Translation") {
+            VStack(alignment: .leading, spacing: 10) {
+                Picker("Language pair", selection: $appModel.translationLanguagePair) {
+                    ForEach(TranslationLanguagePair.allCases) { languagePair in
+                        Text(languagePair.label).tag(languagePair)
+                    }
+                }
+                .frame(maxWidth: 420)
+
+                if appModel.translationLanguagePair == .automatic {
+                    let direction = TranslationDirection.forUserInterface(languagePair: .automatic)
+                    Text("Using \(direction.expectedSourceLanguage) ↔ \(direction.targetLanguage) based on your primary macOS language.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                } else {
+                    Text("This pair is used by Translate Clipboard and Translate Selection.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

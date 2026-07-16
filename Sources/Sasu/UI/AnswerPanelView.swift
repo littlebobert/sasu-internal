@@ -16,7 +16,7 @@ struct AnswerPanelView: View {
             }
         }
         .padding(appModel.isFirstLaunchOnboardingVisible ? 14 : 18)
-        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 340 : 420)
+        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 430 : 420)
     }
 
     private var header: some View {
@@ -44,6 +44,10 @@ struct AnswerPanelView: View {
 
     private var onboardingBody: some View {
         VStack(alignment: .leading, spacing: 12) {
+            onboardingLanguagePairPicker
+
+            Divider()
+
             Text("Try Sasu on this example")
                 .font(.title3.bold())
 
@@ -66,6 +70,32 @@ struct AnswerPanelView: View {
             .font(.caption)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private var onboardingLanguagePairPicker: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Choose your translation languages")
+                .font(.title3.bold())
+
+            Picker("Language pair", selection: $appModel.translationLanguagePair) {
+                ForEach(TranslationLanguagePair.allCases) { languagePair in
+                    Text(languagePair.label).tag(languagePair)
+                }
+            }
+            .frame(maxWidth: 420)
+
+            if appModel.translationLanguagePair == .automatic {
+                let direction = TranslationDirection.forUserInterface(languagePair: .automatic)
+                Text("Automatic currently uses \(direction.expectedSourceLanguage) ↔ \(direction.targetLanguage) based on your primary macOS language. You can change this later in Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            } else {
+                Text("You can change this later in Settings.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var onboardingDocument: some View {
