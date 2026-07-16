@@ -43,7 +43,8 @@ If version is passed, ./Scripts/bump-version.sh is run for that version.
 Otherwise the patch version is bumped automatically (for example, 0.1.6 -> 0.1.7).
 
 With --notes or --notes-file, the provided English release notes are used
-as-is and only translated to Japanese (no diff-based note generation).
+as-is and translated to Japanese, Traditional Chinese, and Simplified Chinese
+(no diff-based note generation).
 Repeat --notes for multiple bullets, or put one bullet per line in a file.
 
 Examples:
@@ -392,20 +393,25 @@ if not english_notes:
 
 english_json = json.dumps(english_notes, ensure_ascii=False)
 prompt = f"""
-Translate these English release notes for Sasu {version} into Japanese.
+Translate these English release notes for Sasu {version} into Japanese,
+Traditional Chinese, and Simplified Chinese.
 
 Return JSON only with this exact shape:
 {{
   "title": "Sasu {version}",
   "summary": "One short sentence.",
   "en": ["same English items, unchanged"],
-  "ja": ["Japanese translations of the English items"]
+  "ja": ["Japanese translations of the English items"],
+  "zhHant": ["Traditional Chinese translations of the English items"],
+  "zhHans": ["Simplified Chinese translations of the English items"]
 }}
 
 Guidelines:
 - Keep the same number of items as the English list.
 - Copy each English item exactly into the "en" array. Do not rewrite, merge, or add items.
 - Provide natural Japanese translations in the "ja" array, one per English item.
+- Provide natural Traditional Chinese translations for Taiwan in the "zhHant" array.
+- Provide natural Simplified Chinese translations in the "zhHans" array.
 - Write each item as a complete sentence with no Markdown bullet marker.
 - Keep each item under 140 characters if possible.
 
@@ -501,7 +507,9 @@ Return JSON only with this exact shape:
   "title": "Sasu {version}",
   "summary": "One short sentence.",
   "en": ["1-3 concise English release-note sentences"],
-  "ja": ["Japanese translations of the English release-note sentences"]
+  "ja": ["Japanese translations of the English release-note sentences"],
+  "zhHant": ["Traditional Chinese translations of the English release-note sentences"],
+  "zhHans": ["Simplified Chinese translations of the English release-note sentences"]
 }}
 
 Guidelines:
@@ -511,6 +519,8 @@ Guidelines:
 - Mention meaningful bug fixes plainly.
 - Do not invent features that are not supported by the diff.
 - Write each English item as a complete sentence with no Markdown bullet marker.
+- Translate every English item into natural Japanese, Traditional Chinese for Taiwan, and Simplified Chinese.
+- Keep all four language arrays in the same order with the same number of items.
 - Keep each item under 140 characters if possible.
 - Use the style of these examples:
   Fixed transcript spacing so words no longer run together when answers contain line breaks.
@@ -560,16 +570,30 @@ if text.startswith("```"):
 notes = json.loads(text)
 en = notes.get("en") or []
 ja = notes.get("ja") or []
+zh_hant = notes.get("zhHant") or []
+zh_hans = notes.get("zhHans") or []
 if not en:
     raise SystemExit("OpenAI did not return English release notes.")
-if len(ja) != len(en):
-    ja = en
+for language, translated_items in (
+    ("Japanese", ja),
+    ("Traditional Chinese", zh_hant),
+    ("Simplified Chinese", zh_hans),
+):
+    if len(translated_items) != len(en):
+        raise SystemExit(
+            f"OpenAI returned {len(translated_items)} {language} release notes "
+            f"for {len(en)} English release notes."
+        )
 
 with open(markdown_path, "w") as handle:
     handle.write("\n".join(en) + "\n")
 
 with open(pair_path, "w") as handle:
-    json.dump({"en": en, "ja": ja}, handle, ensure_ascii=False)
+    json.dump(
+        {"en": en, "ja": ja, "zhHant": zh_hant, "zhHans": zh_hans},
+        handle,
+        ensure_ascii=False,
+    )
 PY
 
 if [[ "$USE_CUSTOM_NOTES" == true ]]; then
@@ -586,13 +610,31 @@ else:
     english_notes = inline_notes
 
 data = json.load(open(pair_path))
-japanese_notes = data.get("ja") or []
-if len(japanese_notes) < len(english_notes):
-    japanese_notes.extend(english_notes[len(japanese_notes):])
-japanese_notes = japanese_notes[: len(english_notes)]
+translations = {}
+for key, language in (
+    ("ja", "Japanese"),
+    ("zhHant", "Traditional Chinese"),
+    ("zhHans", "Simplified Chinese"),
+):
+    translated_notes = data.get(key) or []
+    if len(translated_notes) != len(english_notes):
+        raise SystemExit(
+            f"OpenAI returned {len(translated_notes)} {language} release notes "
+            f"for {len(english_notes)} provided English release notes."
+        )
+    translations[key] = translated_notes
 
 with open(pair_path, "w") as handle:
-    json.dump({"en": english_notes, "ja": japanese_notes}, handle, ensure_ascii=False)
+    json.dump(
+        {
+            "en": english_notes,
+            "ja": translations["ja"],
+            "zhHant": translations["zhHant"],
+            "zhHans": translations["zhHans"],
+        },
+        handle,
+        ensure_ascii=False,
+    )
 
 with open(markdown_path, "w") as handle:
     handle.write("\n".join(english_notes) + "\n")
@@ -614,8 +656,18 @@ path, version, notes_json = sys.argv[1:4]
 notes = json.loads(notes_json)
 en_items = notes["en"]
 ja_items = notes["ja"]
-if len(ja_items) != len(en_items):
-    ja_items = en_items
+zh_hant_items = notes["zhHant"]
+zh_hans_items = notes["zhHans"]
+for language, translated_items in (
+    ("Japanese", ja_items),
+    ("Traditional Chinese", zh_hant_items),
+    ("Simplified Chinese", zh_hans_items),
+):
+    if len(translated_items) != len(en_items):
+        raise SystemExit(
+            f"Expected {len(en_items)} {language} release notes, "
+            f"found {len(translated_items)}."
+        )
 
 text = open(path).read()
 
@@ -631,7 +683,9 @@ text = re.sub(r'>Download [^<]*for macOS</a>', '>Download for macOS</a>', text)
 download_version_re = re.compile(
     r'<span\s+class="download-version"\s+'
     r'data-label-en="\(version [^"]+\)"\s+'
-    r'data-label-ja="（バージョン [^"]+）"\s*'
+    r'data-label-ja="（バージョン [^"]+）"\s+'
+    r'data-label-zh-hant="（版本 [^"]+）"\s+'
+    r'data-label-zh-hans="（版本 [^"]+）"\s*'
     r'>\(version [^<]+\)</span>',
     re.S,
 )
@@ -640,7 +694,9 @@ if not download_version_re.search(text):
 text = download_version_re.sub(
     '<span\n        class="download-version"\n        '
     f'data-label-en="(version {version})"\n        '
-    f'data-label-ja="（バージョン {version}）"\n      '
+    f'data-label-ja="（バージョン {version}）"\n        '
+    f'data-label-zh-hant="（版本 {version}）"\n        '
+    f'data-label-zh-hans="（版本 {version}）"\n      '
     f'>(version {version})</span>',
     text,
     count=1,
@@ -652,12 +708,21 @@ items_html = "\n".join(
     "        <li\n"
     f"          data-label-en=\"{html.escape(en, quote=True)}\"\n"
     f"          data-label-ja=\"{html.escape(ja, quote=True)}\"\n"
+    f"          data-label-zh-hant=\"{html.escape(zh_hant, quote=True)}\"\n"
+    f"          data-label-zh-hans=\"{html.escape(zh_hans, quote=True)}\"\n"
     f"        >{html.escape(en)}</li>"
-    for en, ja in zip(en_items, ja_items)
+    for en, ja, zh_hant, zh_hans in zip(
+        en_items,
+        ja_items,
+        zh_hant_items,
+        zh_hans_items,
+    )
 )
 current_block = f"""      <h3
         data-label-en="{version}"
         data-label-ja="{version}"
+        data-label-zh-hant="{version}"
+        data-label-zh-hans="{version}"
       >{version}</h3>
       <ul>
 {items_html}
@@ -666,7 +731,12 @@ current_block = f"""      <h3
 """
 
 existing_current_pattern = re.compile(
-    r'\s*<h3\s+data-label-en="' + re.escape(version) + r'(?: \(Current\))?"\s+data-label-ja="' + re.escape(version) + r'(?:（現在）)?"\s*>.*?</h3>\s*<ul>.*?</ul>\s*',
+    r'\s*<h3\s+'
+    r'data-label-en="' + re.escape(version) + r'(?: \(Current\))?"\s+'
+    r'data-label-ja="' + re.escape(version) + r'(?:（現在）)?"'
+    r'(?:\s+data-label-zh-hant="' + re.escape(version) + r'")?'
+    r'(?:\s+data-label-zh-hans="' + re.escape(version) + r'")?'
+    r'\s*>.*?</h3>\s*<ul>.*?</ul>\s*',
     re.S,
 )
 release_notes_details_open = (
@@ -697,7 +767,12 @@ elif re.search(release_notes_legacy_open, text, re.S):
 else:
     details_open = (
         '<details>\n'
-        '        <summary data-label-en="Release notes" data-label-ja="リリースノート">Release notes</summary>\n\n'
+        '        <summary\n'
+        '          data-label-en="Release notes"\n'
+        '          data-label-ja="リリースノート"\n'
+        '          data-label-zh-hant="版本資訊"\n'
+        '          data-label-zh-hans="发行说明"\n'
+        '        >Release notes</summary>\n\n'
     )
     text = re.sub(
         r'(<div class="sasu-section release-notes">\s*\n)',
