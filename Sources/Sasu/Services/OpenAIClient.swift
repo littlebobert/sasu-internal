@@ -28,6 +28,7 @@ struct OpenAIClient {
         reasoningEffort: String,
         serviceTier: String,
         imageDetail: String,
+        translationLanguagePair: TranslationLanguagePair,
         prompt: String,
         screenshot: ScreenshotPayload,
         conversationContext: String?
@@ -39,7 +40,12 @@ struct OpenAIClient {
                 ResponsesInput(
                     role: "user",
                     content: [
-                        .inputText(try buildPrompt(prompt: prompt, screenshot: screenshot, conversationContext: conversationContext)),
+                        .inputText(try buildPrompt(
+                            prompt: prompt,
+                            screenshot: screenshot,
+                            translationLanguagePair: translationLanguagePair,
+                            conversationContext: conversationContext
+                        )),
                         .inputImage(
                             imageURL: uploadImage.base64DataURL,
                             detail: imageDetail
@@ -166,7 +172,12 @@ struct OpenAIClient {
         return text
     }
 
-    private func buildPrompt(prompt: String, screenshot: ScreenshotPayload, conversationContext: String?) throws -> String {
+    private func buildPrompt(
+        prompt: String,
+        screenshot: ScreenshotPayload,
+        translationLanguagePair: TranslationLanguagePair,
+        conversationContext: String?
+    ) throws -> String {
         let uploadImage = try screenshot.uploadImage
         var parts = [
             "User request:",
@@ -203,7 +214,10 @@ struct OpenAIClient {
 
             For icon-only targets (exactText is null), place the rectangle tightly around the specific icon only. In toolbars with multiple similar icons, use nearby labeled controls as anchors and double-check you selected the correct icon. Prefer shape "circle" for compact icon buttons. Put disambiguation details in reason when needed.
 
-            \(TranslationDirection.screenshotLanguageBehaviorInstructions)
+            \(TranslationDirection.screenshotLanguageBehaviorInstructions(
+                for: Locale.preferredLanguages,
+                languagePair: translationLanguagePair
+            ))
 
             Format the answer field as clear Markdown.
             """

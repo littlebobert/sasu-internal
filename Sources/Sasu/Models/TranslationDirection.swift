@@ -139,7 +139,19 @@ struct TranslationDirection {
         screenshotLanguageBehaviorInstructions(for: Locale.preferredLanguages)
     }
 
-    static func screenshotLanguageBehaviorInstructions(for preferredLanguages: [String]) -> String {
+    static func screenshotLanguageBehaviorInstructions(
+        for preferredLanguages: [String],
+        languagePair: TranslationLanguagePair = .automatic
+    ) -> String {
+        switch languagePair {
+        case .traditionalChineseJapanese, .traditionalChineseEnglish:
+            return traditionalChineseScreenshotInstructions
+        case .simplifiedChineseJapanese, .simplifiedChineseEnglish:
+            return simplifiedChineseScreenshotInstructions
+        case .automatic:
+            break
+        }
+
         if prefersJapaneseInterface(for: preferredLanguages) {
             return """
             Language behavior:
@@ -150,21 +162,11 @@ struct TranslationDirection {
         }
 
         if prefersTraditionalChineseInterface(for: preferredLanguages) {
-            return """
-            Language behavior:
-            - Always answer in Traditional Chinese, even if the user's request is in English or Japanese.
-            - Preserve visible UI labels in their original on-screen language, then add a short Traditional Chinese translation in parentheses.
-            - For actionSuggestion.label, use a short user-facing target label in Traditional Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
-            """
+            return traditionalChineseScreenshotInstructions
         }
 
         if prefersSimplifiedChineseInterface(for: preferredLanguages) {
-            return """
-            Language behavior:
-            - Always answer in Simplified Chinese, even if the user's request is in English or Japanese.
-            - Preserve visible UI labels in their original on-screen language, then add a short Simplified Chinese translation in parentheses.
-            - For actionSuggestion.label, use a short user-facing target label in Simplified Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
-            """
+            return simplifiedChineseScreenshotInstructions
         }
 
         return """
@@ -172,6 +174,24 @@ struct TranslationDirection {
         - Answer in the same language as the user's request unless the user asks otherwise.
         - Preserve visible UI labels in their original on-screen language. For Japanese UI, quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
         - For actionSuggestion.label, use a short user-facing target label in the same language as the user's request. If the visible UI label is in another language, include that original on-screen label in actionSuggestion.reason or answer.
+        """
+    }
+
+    private static var traditionalChineseScreenshotInstructions: String {
+        """
+        Language behavior:
+        - Always answer in Traditional Chinese, even if the user's request is in English or Japanese.
+        - Preserve visible UI labels in their original on-screen language, then add a short Traditional Chinese translation in parentheses.
+        - For actionSuggestion.label, use a short user-facing target label in Traditional Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+        """
+    }
+
+    private static var simplifiedChineseScreenshotInstructions: String {
+        """
+        Language behavior:
+        - Always answer in Simplified Chinese, even if the user's request is in English or Japanese.
+        - Preserve visible UI labels in their original on-screen language, then add a short Simplified Chinese translation in parentheses.
+        - For actionSuggestion.label, use a short user-facing target label in Simplified Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
         """
     }
 

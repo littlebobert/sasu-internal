@@ -1631,6 +1631,7 @@ final class AppModel: ObservableObject {
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
                 imageDetail: imageDetail,
+                translationLanguagePair: translationLanguagePair,
                 prompt: prompt,
                 screenshot: screenshot,
                 conversationContext: conversationContext

@@ -102,4 +102,18 @@ final class TranslationDirectionTests: XCTestCase {
         XCTAssertTrue(instructions.contains("Always answer in Simplified Chinese"))
         XCTAssertTrue(instructions.contains("target label in Simplified Chinese"))
     }
+
+    func testExplicitLanguagePairControlsScreenshotAnswerLanguage() {
+        let traditionalInstructions = TranslationDirection.screenshotLanguageBehaviorInstructions(
+            for: ["en-US"],
+            languagePair: .traditionalChineseEnglish
+        )
+        let simplifiedInstructions = TranslationDirection.screenshotLanguageBehaviorInstructions(
+            for: ["ja-JP"],
+            languagePair: .simplifiedChineseJapanese
+        )
+
+        XCTAssertTrue(traditionalInstructions.contains("Always answer in Traditional Chinese"))
+        XCTAssertTrue(simplifiedInstructions.contains("Always answer in Simplified Chinese"))
+    }
 }
