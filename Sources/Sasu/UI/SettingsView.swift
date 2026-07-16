@@ -10,6 +10,7 @@ struct SettingsView: View {
         GeometryReader { geometry in
             ScrollView {
                 VStack(alignment: .leading, spacing: 14) {
+                    appearanceSection
                     hotkeySection
                     accessSection
                     modelSection
@@ -20,6 +21,43 @@ struct SettingsView: View {
                 .padding(.vertical, 20)
             }
         }
+    }
+
+    private var appearanceSection: some View {
+        GroupBox("Appearance") {
+            VStack(alignment: .leading, spacing: 10) {
+                Stepper(
+                    value: $appModel.transcriptTextSize,
+                    in: AppModel.minimumTranscriptTextSize...AppModel.maximumTranscriptTextSize,
+                    step: AppModel.transcriptTextSizeStep
+                ) {
+                    HStack {
+                        Text("Transcript text size")
+
+                        Spacer()
+
+                        Text("\(Int(appModel.transcriptTextSize)) pt")
+                            .foregroundStyle(.secondary)
+                            .monospacedDigit()
+                    }
+                }
+                .frame(maxWidth: 360)
+
+                HStack {
+                    Button("Reset Text Size") {
+                        appModel.resetTranscriptTextSize()
+                    }
+                    .disabled(appModel.transcriptTextSize == AppModel.defaultTranscriptTextSize)
+
+                    Text("You can also use ⌘+ and ⌘−.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .padding(.vertical, 4)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var accessSection: some View {

@@ -39,7 +39,7 @@ Create an app and add Heroku Postgres, then set config vars:
 heroku config:set OPENAI_API_KEY=sk-... --app <heroku-app>
 heroku config:set TOKEN_HASH_PEPPER="$(python -c 'import secrets; print(secrets.token_urlsafe(48))')" --app <heroku-app>
 heroku config:set INVITE_BASE_URL="https://sasu.jp/sasu-invite#invite=" --app <heroku-app>
-heroku config:set ALLOWED_MODELS="gpt-5.5" --app <heroku-app>
+heroku config:set ALLOWED_MODELS="gpt-5.5,gpt-5.6" --app <heroku-app>
 heroku config:set MONTHLY_USAGE_LIMIT_PER_TOKEN=600 --app <heroku-app>
 heroku config:set IMAGE_REQUEST_USAGE_UNITS=10 --app <heroku-app>
 heroku config:set TEXT_REQUEST_USAGE_UNITS=1 --app <heroku-app>

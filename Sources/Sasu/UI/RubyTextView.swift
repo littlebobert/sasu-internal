@@ -3,10 +3,11 @@ import SwiftUI
 
 struct RubyTextView: View {
     let segments: [RubyTextSegment]
+    var fontSize: CGFloat = 13
     @State private var height: CGFloat = 44
 
     var body: some View {
-        RubyCoreTextView(segments: segments, height: $height)
+        RubyCoreTextView(segments: segments, fontSize: fontSize, height: $height)
             .frame(height: height)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -14,6 +15,7 @@ struct RubyTextView: View {
 
 private struct RubyCoreTextView: NSViewRepresentable {
     let segments: [RubyTextSegment]
+    let fontSize: CGFloat
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -29,7 +31,7 @@ private struct RubyCoreTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: CoreTextRubyDrawingView, context: Context) {
-        let attributedString = Self.attributedString(for: segments)
+        let attributedString = Self.attributedString(for: segments, fontSize: fontSize)
         guard context.coordinator.currentAttributedString != attributedString else {
             view.updateMeasuredHeight()
             return
@@ -39,13 +41,13 @@ private struct RubyCoreTextView: NSViewRepresentable {
         view.attributedString = attributedString
     }
 
-    private static func attributedString(for segments: [RubyTextSegment]) -> NSAttributedString {
+    private static func attributedString(for segments: [RubyTextSegment], fontSize: CGFloat) -> NSAttributedString {
         let result = NSMutableAttributedString()
         let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.lineSpacing = 12
+        paragraphStyle.lineSpacing = fontSize * (12.0 / 13.0)
 
         let baseAttributes: [NSAttributedString.Key: Any] = [
-            .font: NSFont.systemFont(ofSize: 13),
+            .font: NSFont.systemFont(ofSize: fontSize),
             .foregroundColor: NSColor.labelColor,
             .paragraphStyle: paragraphStyle
         ]

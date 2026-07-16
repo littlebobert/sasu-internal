@@ -98,6 +98,20 @@ struct SasuApp: App {
                 .keyboardShortcut(",", modifiers: [.command])
             }
 
+            CommandMenu("View") {
+                Button("Increase Text Size") {
+                    appModel.increaseTranscriptTextSize()
+                }
+                .keyboardShortcut("+", modifiers: [.command])
+                .disabled(!appModel.canIncreaseTranscriptTextSize)
+
+                Button("Decrease Text Size") {
+                    appModel.decreaseTranscriptTextSize()
+                }
+                .keyboardShortcut("-", modifiers: [.command])
+                .disabled(!appModel.canDecreaseTranscriptTextSize)
+            }
+
             CommandMenu("Sasu") {
                 Button("Show Transcript") {
                     appModel.showTranscriptWindow()

@@ -341,7 +341,7 @@ private struct TranscriptMessageView: View {
             } else if let clipboardSourceText {
                 clipboardSourceView(clipboardSourceText)
             } else {
-                MarkdownText(markdown: message.text)
+                MarkdownText(markdown: message.text, fontSize: appModel.transcriptFontSize)
                     .frame(width: availableWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 6)
@@ -357,11 +357,12 @@ private struct TranscriptMessageView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                RubyTextView(segments: sourceReadings)
+                RubyTextView(segments: sourceReadings, fontSize: appModel.transcriptFontSize)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
             (Text("Clipboard text: ") + Text(text))
+                .font(.system(size: appModel.transcriptFontSize))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
                 .fixedSize(horizontal: false, vertical: true)

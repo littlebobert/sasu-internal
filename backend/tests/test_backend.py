@@ -21,7 +21,7 @@ def make_client(
         database_url=f"sqlite:///{tmp_path / 'test.db'}",
         openai_api_key="sk-test",
         token_hash_pepper="test-pepper",
-        allowed_models={"gpt-5.5"},
+        allowed_models={"gpt-5.5", "gpt-5.6"},
         request_max_bytes=10_000,
         rate_limit_per_minute=rate_limit_per_minute,
         monthly_usage_limit_per_token=monthly_usage_limit_per_token,
@@ -64,12 +64,12 @@ def add_app_token(client: TestClient, label: str = "mom", revoked: bool = False)
 
 
 def text_request() -> dict:
-    return {"model": "gpt-5.5", "input": []}
+    return {"model": "gpt-5.6", "input": []}
 
 
 def image_request() -> dict:
     return {
-        "model": "gpt-5.5",
+        "model": "gpt-5.6",
         "input": [
             {
                 "role": "user",

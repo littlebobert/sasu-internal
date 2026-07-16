@@ -34,6 +34,17 @@ final class AppModel: ObservableObject {
     @Published var automaticallyIncludeSafariPageContent: Bool {
         didSet { defaults.set(automaticallyIncludeSafariPageContent, forKey: Self.automaticallyIncludeSafariPageContentKey) }
     }
+    @Published var transcriptTextSize: Double {
+        didSet {
+            let clampedSize = Self.clampedTranscriptTextSize(transcriptTextSize)
+            guard transcriptTextSize == clampedSize else {
+                transcriptTextSize = clampedSize
+                return
+            }
+
+            defaults.set(transcriptTextSize, forKey: Self.transcriptTextSizeKey)
+        }
+    }
     @Published var selectedModelPresetID: String {
         didSet {
             defaults.set(selectedModelPresetID, forKey: Self.selectedModelPresetIDKey)
@@ -96,6 +107,10 @@ final class AppModel: ObservableObject {
     @Published var followUpText = ""
     @Published private(set) var querySelectionNonce = 0
 
+    var transcriptFontSize: CGFloat {
+        CGFloat(transcriptTextSize)
+    }
+
     private static let accessModeKey = "accessMode"
     private static let backendBaseURLKey = "backendBaseURL"
     private static let backendAccessLabelKey = "backendAccessLabel"
@@ -104,6 +119,7 @@ final class AppModel: ObservableObject {
     private static let serviceTierKey = "serviceTier"
     private static let imageDetailKey = "imageDetail"
     private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
+    private static let transcriptTextSizeKey = "transcriptTextSize"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let safariPageSendConfirmationCharacterThreshold = 8_000
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
@@ -120,8 +136,13 @@ final class AppModel: ObservableObject {
     private static let aboutWindowPresentationID = "about"
     private static let screenshotPreviewWindowPresentationID = "screenshot-preview"
     private static let retiredModelAliases = [
-        "gpt-5.5-high-fast"
+        "gpt-5.5-high-fast",
+        "gpt-5.5"
     ]
+    static let defaultTranscriptTextSize = 13.0
+    static let minimumTranscriptTextSize = 11.0
+    static let maximumTranscriptTextSize = 24.0
+    static let transcriptTextSizeStep = 1.0
     private static var defaultBackendBaseURL: String {
         Bundle.main.object(forInfoDictionaryKey: "SASUBackendBaseURL") as? String ?? "https://sasu-backend-f1fe990b2452.herokuapp.com"
     }
@@ -194,19 +215,26 @@ final class AppModel: ObservableObject {
         if let savedModelID, !Self.retiredModelAliases.contains(savedModelID) {
             initialModelID = savedModelID
         } else {
-            initialModelID = ModelPreset.gpt55HighFast.modelID
-            defaults.set(ModelPreset.gpt55HighFast.modelID, forKey: Self.modelIDKey)
+            initialModelID = ModelPreset.gpt56HighFast.modelID
+            defaults.set(ModelPreset.gpt56HighFast.modelID, forKey: Self.modelIDKey)
         }
-        let initialReasoningEffort = defaults.string(forKey: Self.reasoningEffortKey) ?? ModelPreset.gpt55HighFast.reasoningEffort
-        let initialServiceTier = defaults.string(forKey: Self.serviceTierKey) ?? ModelPreset.gpt55HighFast.serviceTier
+        let initialReasoningEffort = defaults.string(forKey: Self.reasoningEffortKey) ?? ModelPreset.gpt56HighFast.reasoningEffort
+        let initialServiceTier = defaults.string(forKey: Self.serviceTierKey) ?? ModelPreset.gpt56HighFast.serviceTier
         self.modelID = initialModelID
         self.reasoningEffort = initialReasoningEffort
         self.serviceTier = initialServiceTier
-        self.imageDetail = defaults.string(forKey: Self.imageDetailKey) ?? ModelPreset.gpt55HighFast.imageDetail
+        self.imageDetail = defaults.string(forKey: Self.imageDetailKey) ?? ModelPreset.gpt56HighFast.imageDetail
         if defaults.object(forKey: Self.automaticallyIncludeSafariPageContentKey) == nil {
             self.automaticallyIncludeSafariPageContent = true
         } else {
             self.automaticallyIncludeSafariPageContent = defaults.bool(forKey: Self.automaticallyIncludeSafariPageContentKey)
+        }
+        if defaults.object(forKey: Self.transcriptTextSizeKey) == nil {
+            self.transcriptTextSize = Self.defaultTranscriptTextSize
+        } else {
+            self.transcriptTextSize = Self.clampedTranscriptTextSize(
+                defaults.double(forKey: Self.transcriptTextSizeKey)
+            )
         }
         let savedPresetID = defaults.string(forKey: Self.selectedModelPresetIDKey)
         self.selectedModelPresetID = Self.availablePresetID(savedPresetID) ?? ModelPreset.matching(
@@ -672,10 +700,10 @@ final class AppModel: ObservableObject {
     }
 
     func resetModelToDefault() {
-        selectedModelPresetID = ModelPreset.gpt55HighFast.id
+        selectedModelPresetID = ModelPreset.gpt56HighFast.id
         applySelectedModelPreset()
         errorMessage = nil
-        statusMessage = "Model reset to \(ModelPreset.gpt55HighFast.label)."
+        statusMessage = "Model reset to \(ModelPreset.gpt56HighFast.label)."
     }
 
     var selectedModelPreset: ModelPreset {
@@ -692,10 +720,38 @@ final class AppModel: ObservableObject {
 
     private static func availablePresetID(_ presetID: String?) -> String? {
         guard let presetID else { return nil }
-        if presetID == "gpt55High" {
-            return ModelPreset.gpt55HighFast.id
+        switch presetID {
+        case "gpt55High", "gpt55HighFast":
+            return ModelPreset.gpt56HighFast.id
+        case "gpt55MediumFast":
+            return ModelPreset.gpt56MediumFast.id
+        default:
+            return ModelPreset.all.contains { $0.id == presetID } ? presetID : nil
         }
-        return ModelPreset.all.contains { $0.id == presetID } ? presetID : nil
+    }
+
+    private static func clampedTranscriptTextSize(_ size: Double) -> Double {
+        min(max(size, minimumTranscriptTextSize), maximumTranscriptTextSize)
+    }
+
+    var canIncreaseTranscriptTextSize: Bool {
+        transcriptTextSize < Self.maximumTranscriptTextSize
+    }
+
+    var canDecreaseTranscriptTextSize: Bool {
+        transcriptTextSize > Self.minimumTranscriptTextSize
+    }
+
+    func increaseTranscriptTextSize() {
+        transcriptTextSize += Self.transcriptTextSizeStep
+    }
+
+    func decreaseTranscriptTextSize() {
+        transcriptTextSize -= Self.transcriptTextSizeStep
+    }
+
+    func resetTranscriptTextSize() {
+        transcriptTextSize = Self.defaultTranscriptTextSize
     }
 
     func setHotkeyModifier(_ modifier: UInt32, enabled: Bool) {

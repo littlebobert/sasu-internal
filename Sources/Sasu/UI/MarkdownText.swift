@@ -3,14 +3,16 @@ import SwiftUI
 
 struct MarkdownText: View {
     let markdown: String
+    var fontSize: CGFloat = NSFont.systemFontSize
 
     var body: some View {
-        MarkdownTextView(markdown: markdown)
+        MarkdownTextView(markdown: markdown, fontSize: fontSize)
     }
 }
 
 private struct MarkdownTextView: NSViewRepresentable {
     let markdown: String
+    let fontSize: CGFloat
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -23,7 +25,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ textView: LinkTextView, context: Context) {
-        textView.textStorage?.setAttributedString(Self.attributedMarkdown(for: markdown))
+        textView.textStorage?.setAttributedString(Self.attributedMarkdown(for: markdown, fontSize: fontSize))
         textView.invalidateIntrinsicContentSize()
     }
 
@@ -39,7 +41,7 @@ private struct MarkdownTextView: NSViewRepresentable {
         )
     }
 
-    private static func attributedMarkdown(for markdown: String) -> NSAttributedString {
+    private static func attributedMarkdown(for markdown: String, fontSize: CGFloat) -> NSAttributedString {
         let normalizedMarkdown = TextSpacingRepair.repairMissingSpaces(
             in: markdownWithSafeSoftBreaks(markdown)
         )
@@ -59,7 +61,7 @@ private struct MarkdownTextView: NSViewRepresentable {
 
         result.addAttributes(
             [
-                .font: NSFont.systemFont(ofSize: NSFont.systemFontSize),
+                .font: NSFont.systemFont(ofSize: fontSize),
                 .foregroundColor: NSColor.labelColor,
                 .paragraphStyle: paragraphStyle
             ],

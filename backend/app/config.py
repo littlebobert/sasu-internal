@@ -12,7 +12,7 @@ def _get_int(name: str, default: int) -> int:
 
 
 def _get_allowed_models() -> set[str]:
-    raw_value = os.environ.get("ALLOWED_MODELS", "gpt-5.5")
+    raw_value = os.environ.get("ALLOWED_MODELS", "gpt-5.5,gpt-5.6")
     return {model.strip() for model in raw_value.split(",") if model.strip()}
 
 
