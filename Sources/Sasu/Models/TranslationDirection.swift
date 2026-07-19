@@ -1,28 +1,27 @@
 import Foundation
 
-enum TranslationLanguagePair: String, CaseIterable, Identifiable {
-    case automatic
-    case traditionalChineseJapanese
-    case traditionalChineseEnglish
-    case simplifiedChineseJapanese
-    case simplifiedChineseEnglish
+enum TranslationSourceLanguage: String, CaseIterable, Identifiable {
+    case japanese
+    case english
+    case simplifiedChinese
+    case traditionalChinese
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
-        case .automatic:
-            return "Automatic"
-        case .traditionalChineseJapanese:
-            return "Traditional Chinese ↔ Japanese"
-        case .traditionalChineseEnglish:
-            return "Traditional Chinese ↔ English"
-        case .simplifiedChineseJapanese:
-            return "Simplified Chinese ↔ Japanese"
-        case .simplifiedChineseEnglish:
-            return "Simplified Chinese ↔ English"
+        case .japanese:
+            return "Japanese"
+        case .english:
+            return "English"
+        case .simplifiedChinese:
+            return "Simplified Chinese"
+        case .traditionalChinese:
+            return "Traditional Chinese"
         }
     }
+
+    var languageName: String { label }
 }
 
 struct TranslationDirection {
@@ -72,67 +71,75 @@ struct TranslationDirection {
     }
 
     static var forUserInterface: TranslationDirection {
-        forPreferredLanguages(Locale.preferredLanguages)
+        forPreferredLanguages(Locale.preferredLanguages, sourceLanguage: .japanese)
     }
 
-    static func forUserInterface(languagePair: TranslationLanguagePair) -> TranslationDirection {
-        forPreferredLanguages(Locale.preferredLanguages, languagePair: languagePair)
+    static var availableSourceLanguagesForUserInterface: [TranslationSourceLanguage] {
+        availableSourceLanguages(for: Locale.preferredLanguages)
+    }
+
+    static func availableSourceLanguages(
+        for preferredLanguages: [String]
+    ) -> [TranslationSourceLanguage] {
+        let interfaceLanguage = interfaceLanguage(for: preferredLanguages)
+        return TranslationSourceLanguage.allCases.filter { $0 != interfaceLanguage }
+    }
+
+    static func forUserInterface(sourceLanguage: TranslationSourceLanguage) -> TranslationDirection {
+        forPreferredLanguages(Locale.preferredLanguages, sourceLanguage: sourceLanguage)
+    }
+
+    static func forEditableSelectionReplacement(
+        sourceLanguage: TranslationSourceLanguage
+    ) -> TranslationDirection {
+        forEditableSelectionReplacement(
+            preferredLanguages: Locale.preferredLanguages,
+            sourceLanguage: sourceLanguage
+        )
+    }
+
+    static func forEditableSelectionReplacement(
+        preferredLanguages: [String],
+        sourceLanguage: TranslationSourceLanguage
+    ) -> TranslationDirection {
+        let readingDirection = forPreferredLanguages(
+            preferredLanguages,
+            sourceLanguage: sourceLanguage
+        )
+        return TranslationDirection(
+            targetLanguage: sourceLanguage.languageName,
+            expectedSourceLanguage: readingDirection.targetLanguage
+        )
     }
 
     static func forPreferredLanguages(
         _ preferredLanguages: [String],
-        languagePair: TranslationLanguagePair = .automatic
+        sourceLanguage: TranslationSourceLanguage = .japanese
     ) -> TranslationDirection {
-        switch languagePair {
-        case .traditionalChineseJapanese:
-            return TranslationDirection(
-                targetLanguage: "Traditional Chinese",
-                expectedSourceLanguage: "Japanese"
-            )
-        case .traditionalChineseEnglish:
-            return TranslationDirection(
-                targetLanguage: "Traditional Chinese",
-                expectedSourceLanguage: "English"
-            )
-        case .simplifiedChineseJapanese:
-            return TranslationDirection(
-                targetLanguage: "Simplified Chinese",
-                expectedSourceLanguage: "Japanese"
-            )
-        case .simplifiedChineseEnglish:
-            return TranslationDirection(
-                targetLanguage: "Simplified Chinese",
-                expectedSourceLanguage: "English"
-            )
-        case .automatic:
-            break
-        }
+        let preferredTargetLanguage = interfaceLanguage(for: preferredLanguages).languageName
 
-        if prefersJapaneseInterface(for: preferredLanguages) {
-            return TranslationDirection(
-                targetLanguage: "Japanese",
-                expectedSourceLanguage: "English"
-            )
-        }
-
-        if prefersTraditionalChineseInterface(for: preferredLanguages) {
-            return TranslationDirection(
-                targetLanguage: "Traditional Chinese",
-                expectedSourceLanguage: "Japanese"
-            )
-        }
-
-        if prefersSimplifiedChineseInterface(for: preferredLanguages) {
-            return TranslationDirection(
-                targetLanguage: "Simplified Chinese",
-                expectedSourceLanguage: "Japanese"
-            )
-        }
+        let targetLanguage = preferredTargetLanguage == sourceLanguage.languageName
+            ? (sourceLanguage == .japanese ? "English" : "Japanese")
+            : preferredTargetLanguage
 
         return TranslationDirection(
-            targetLanguage: "English",
-            expectedSourceLanguage: "Japanese"
+            targetLanguage: targetLanguage,
+            expectedSourceLanguage: sourceLanguage.languageName
         )
+    }
+
+    private static func interfaceLanguage(
+        for preferredLanguages: [String]
+    ) -> TranslationSourceLanguage {
+        if prefersJapaneseInterface(for: preferredLanguages) {
+            return .japanese
+        } else if prefersTraditionalChineseInterface(for: preferredLanguages) {
+            return .traditionalChinese
+        } else if prefersSimplifiedChineseInterface(for: preferredLanguages) {
+            return .simplifiedChinese
+        } else {
+            return .english
+        }
     }
 
     static var screenshotLanguageBehaviorInstructions: String {
@@ -141,39 +148,32 @@ struct TranslationDirection {
 
     static func screenshotLanguageBehaviorInstructions(
         for preferredLanguages: [String],
-        languagePair: TranslationLanguagePair = .automatic
+        sourceLanguage: TranslationSourceLanguage = .japanese
     ) -> String {
-        switch languagePair {
-        case .traditionalChineseJapanese, .traditionalChineseEnglish:
-            return traditionalChineseScreenshotInstructions
-        case .simplifiedChineseJapanese, .simplifiedChineseEnglish:
-            return simplifiedChineseScreenshotInstructions
-        case .automatic:
-            break
-        }
-
+        let languageInstructions: String
         if prefersJapaneseInterface(for: preferredLanguages) {
-            return """
+            languageInstructions = """
             Language behavior:
             - Always answer in Japanese, even if the user's request is in English.
             - Preserve visible UI labels in their original on-screen language. Quote an English label first, then add a short Japanese translation in parentheses, such as `Schedule`（「予定」）.
-            - For actionSuggestion.label, use a short user-facing target label in Japanese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+            - For actionSuggestion.label, use a concise, complete next-step instruction in Japanese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+            """
+        } else if prefersTraditionalChineseInterface(for: preferredLanguages) {
+            languageInstructions = traditionalChineseScreenshotInstructions
+        } else if prefersSimplifiedChineseInterface(for: preferredLanguages) {
+            languageInstructions = simplifiedChineseScreenshotInstructions
+        } else {
+            languageInstructions = """
+            Language behavior:
+            - Answer in the same language as the user's request unless the user asks otherwise.
+            - Preserve visible UI labels in their original on-screen language. For Japanese UI, quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
+            - For actionSuggestion.label, use a concise, complete next-step instruction in the same language as the user's request. If the visible UI label is in another language, include that original on-screen label in actionSuggestion.reason or answer.
             """
         }
 
-        if prefersTraditionalChineseInterface(for: preferredLanguages) {
-            return traditionalChineseScreenshotInstructions
-        }
+        return languageInstructions + """
 
-        if prefersSimplifiedChineseInterface(for: preferredLanguages) {
-            return simplifiedChineseScreenshotInstructions
-        }
-
-        return """
-        Language behavior:
-        - Answer in the same language as the user's request unless the user asks otherwise.
-        - Preserve visible UI labels in their original on-screen language. For Japanese UI, quote the Japanese label first, then add a short translation in parentheses, such as `予定` ("Schedule").
-        - For actionSuggestion.label, use a short user-facing target label in the same language as the user's request. If the visible UI label is in another language, include that original on-screen label in actionSuggestion.reason or answer.
+        - When the user asks for a translation, expect the source language to be \(sourceLanguage.languageName) unless they explicitly say otherwise.
         """
     }
 
@@ -182,7 +182,7 @@ struct TranslationDirection {
         Language behavior:
         - Always answer in Traditional Chinese, even if the user's request is in English or Japanese.
         - Preserve visible UI labels in their original on-screen language, then add a short Traditional Chinese translation in parentheses.
-        - For actionSuggestion.label, use a short user-facing target label in Traditional Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+        - For actionSuggestion.label, use a concise, complete next-step instruction in Traditional Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
         """
     }
 
@@ -191,7 +191,7 @@ struct TranslationDirection {
         Language behavior:
         - Always answer in Simplified Chinese, even if the user's request is in English or Japanese.
         - Preserve visible UI labels in their original on-screen language, then add a short Simplified Chinese translation in parentheses.
-        - For actionSuggestion.label, use a short user-facing target label in Simplified Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
+        - For actionSuggestion.label, use a concise, complete next-step instruction in Simplified Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
         """
     }
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import httpx
 from fastapi import Response
 from fastapi.testclient import TestClient
 
@@ -126,6 +127,47 @@ def test_proxies_responses_with_valid_app_token(tmp_path, monkeypatch) -> None:
         )
         assert response.status_code == 200
         assert response.json() == {"output_text": "ok"}
+    finally:
+        close_client(client)
+
+
+def test_streams_openai_response_events_with_valid_app_token(tmp_path, monkeypatch) -> None:
+    client = make_client(tmp_path)
+    original_async_client = httpx.AsyncClient
+    event_stream = (
+        b'data: {"type":"response.output_text.delta","delta":"Hello"}\n\n'
+        b'data: {"type":"response.completed"}\n\n'
+    )
+
+    def upstream_handler(request: httpx.Request) -> httpx.Response:
+        assert request.url == "https://api.openai.com/v1/responses"
+        assert b'"stream":true' in request.content
+        return httpx.Response(
+            200,
+            headers={"content-type": "text/event-stream"},
+            content=event_stream,
+        )
+
+    transport = httpx.MockTransport(upstream_handler)
+    monkeypatch.setattr(
+        "app.main.httpx.AsyncClient",
+        lambda **_: original_async_client(transport=transport),
+    )
+
+    try:
+        token = add_app_token(client)
+        request_body = text_request()
+        request_body["stream"] = True
+
+        response = client.post(
+            "/v1/responses",
+            headers={"Authorization": f"Bearer {token}"},
+            json=request_body,
+        )
+
+        assert response.status_code == 200
+        assert response.content == event_stream
+        assert response.headers["content-type"].startswith("text/event-stream")
     finally:
         close_client(client)
 

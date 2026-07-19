@@ -2,30 +2,75 @@ import Carbon
 import SwiftUI
 
 struct SettingsView: View {
+    private enum SettingsTab: Hashable {
+        case general
+        case hotkeys
+        case ai
+        case capture
+    }
+
     @EnvironmentObject private var appModel: AppModel
     @FocusState private var isAPIKeyFieldFocused: Bool
     @State private var hasEditedAPIKey = false
+    @State private var selectedTab = SettingsTab.general
 
     var body: some View {
+        TabView(selection: $selectedTab) {
+            settingsPage {
+                translationSection
+                appearanceSection
+            }
+            .tabItem {
+                Label("General", systemImage: "gearshape")
+            }
+            .tag(SettingsTab.general)
+
+            settingsPage {
+                hotkeySection
+            }
+            .tabItem {
+                Label("Hotkeys", systemImage: "keyboard")
+            }
+            .tag(SettingsTab.hotkeys)
+
+            settingsPage {
+                accessSection
+                modelSection
+            }
+            .tabItem {
+                Label("AI", systemImage: "sparkles")
+            }
+            .tag(SettingsTab.ai)
+
+            settingsPage {
+                captureSection
+            }
+            .tabItem {
+                Label("Capture", systemImage: "camera")
+            }
+            .tag(SettingsTab.capture)
+        }
+        .padding(.top, 8)
+    }
+
+    private func settingsPage<Content: View>(
+        @ViewBuilder content: @escaping () -> Content
+    ) -> some View {
         GeometryReader { geometry in
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: true) {
                 VStack(alignment: .leading, spacing: 14) {
-                    appearanceSection
-                    translationSection
-                    hotkeySection
-                    accessSection
-                    modelSection
-                    captureSection
+                    content()
                 }
                 .frame(width: max(0, geometry.size.width - 48), alignment: .leading)
                 .padding(.horizontal, 24)
                 .padding(.vertical, 20)
             }
+            .scrollIndicators(.visible)
         }
     }
 
     private var appearanceSection: some View {
-        GroupBox("Appearance") {
+        settingsGroup("Appearance") {
             VStack(alignment: .leading, spacing: 10) {
                 Stepper(
                     value: $appModel.transcriptTextSize,
@@ -44,16 +89,9 @@ struct SettingsView: View {
                 }
                 .frame(maxWidth: 360)
 
-                HStack {
-                    Button("Reset Text Size") {
-                        appModel.resetTranscriptTextSize()
-                    }
-                    .disabled(appModel.transcriptTextSize == AppModel.defaultTranscriptTextSize)
-
-                    Text("You can also use ⌘+ and ⌘−.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                Text("You can also use ⌘+ and ⌘−.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -62,26 +100,22 @@ struct SettingsView: View {
     }
 
     private var translationSection: some View {
-        GroupBox("Translation") {
+        settingsGroup("Translation") {
             VStack(alignment: .leading, spacing: 10) {
-                Picker("Language pair", selection: $appModel.translationLanguagePair) {
-                    ForEach(TranslationLanguagePair.allCases) { languagePair in
-                        Text(languagePair.label).tag(languagePair)
+                Picker("Translate from", selection: $appModel.translationSourceLanguage) {
+                    ForEach(TranslationDirection.availableSourceLanguagesForUserInterface) { sourceLanguage in
+                        Text(sourceLanguage.label).tag(sourceLanguage)
                     }
                 }
                 .frame(maxWidth: 420)
 
-                if appModel.translationLanguagePair == .automatic {
-                    let direction = TranslationDirection.forUserInterface(languagePair: .automatic)
-                    Text("Using \(direction.expectedSourceLanguage) ↔ \(direction.targetLanguage) based on your primary macOS language.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("This pair is used by Translate Clipboard and Translate Selection.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+                let direction = TranslationDirection.forUserInterface(
+                    sourceLanguage: appModel.translationSourceLanguage
+                )
+                Text("Reads \(direction.expectedSourceLanguage) into \(direction.targetLanguage). Editable selections translate in the reverse direction so you can replace text you are writing.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -90,7 +124,7 @@ struct SettingsView: View {
     }
 
     private var accessSection: some View {
-        GroupBox("Access") {
+        settingsGroup("Access") {
             VStack(alignment: .leading, spacing: 12) {
                 Picker("Use", selection: $appModel.accessMode) {
                     ForEach(AccessMode.allCases) { mode in
@@ -208,7 +242,7 @@ struct SettingsView: View {
     }
 
     private var modelSection: some View {
-        GroupBox("AI Model") {
+        settingsGroup("AI Model") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("", selection: $appModel.selectedModelPresetID) {
                     ForEach(ModelPreset.all) { preset in
@@ -225,10 +259,10 @@ struct SettingsView: View {
     }
 
     private var hotkeySection: some View {
-        GroupBox("Hotkeys") {
+        settingsGroup("Hotkeys") {
             VStack(alignment: .leading, spacing: 14) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Capture Screen")
+                    Text("Sasu Command Wheel")
                         .font(.caption.bold())
 
                     Text("Current: \(appModel.hotkeyDescription)")
@@ -264,7 +298,7 @@ struct SettingsView: View {
                         })
                     }
 
-                    Button("Reset Capture Hotkey") {
+                    Button("Reset Command Wheel Hotkey") {
                         appModel.resetHotkeyToDefault()
                     }
                 }
@@ -272,13 +306,13 @@ struct SettingsView: View {
                 Divider()
 
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Translate Clipboard")
+                    Text("Capture & Ask")
                         .font(.caption.bold())
 
-                    Text("Current: \(appModel.translateClipboardHotkeyDescription)")
+                    Text("Current: \(appModel.captureAndAskHotkeyDescription)")
                         .foregroundStyle(.secondary)
 
-                    Picker("Key", selection: $appModel.translateClipboardHotkeyKeyCode) {
+                    Picker("Key", selection: $appModel.captureAndAskHotkeyKeyCode) {
                         ForEach(HotkeyConfiguration.supportedKeys) { key in
                             Text(key.name).tag(key.keyCode)
                         }
@@ -287,29 +321,29 @@ struct SettingsView: View {
 
                     HStack {
                         modifierToggle("Control", isEnabled: {
-                            appModel.translateClipboardHotkeyModifiers & UInt32(controlKey) != 0
+                            appModel.captureAndAskHotkeyModifiers & UInt32(controlKey) != 0
                         }, setEnabled: {
-                            appModel.setTranslateClipboardHotkeyModifier(UInt32(controlKey), enabled: $0)
+                            appModel.setCaptureAndAskHotkeyModifier(UInt32(controlKey), enabled: $0)
                         })
                         modifierToggle("Option", isEnabled: {
-                            appModel.translateClipboardHotkeyModifiers & UInt32(optionKey) != 0
+                            appModel.captureAndAskHotkeyModifiers & UInt32(optionKey) != 0
                         }, setEnabled: {
-                            appModel.setTranslateClipboardHotkeyModifier(UInt32(optionKey), enabled: $0)
+                            appModel.setCaptureAndAskHotkeyModifier(UInt32(optionKey), enabled: $0)
                         })
                         modifierToggle("Shift", isEnabled: {
-                            appModel.translateClipboardHotkeyModifiers & UInt32(shiftKey) != 0
+                            appModel.captureAndAskHotkeyModifiers & UInt32(shiftKey) != 0
                         }, setEnabled: {
-                            appModel.setTranslateClipboardHotkeyModifier(UInt32(shiftKey), enabled: $0)
+                            appModel.setCaptureAndAskHotkeyModifier(UInt32(shiftKey), enabled: $0)
                         })
                         modifierToggle("Command", isEnabled: {
-                            appModel.translateClipboardHotkeyModifiers & UInt32(cmdKey) != 0
+                            appModel.captureAndAskHotkeyModifiers & UInt32(cmdKey) != 0
                         }, setEnabled: {
-                            appModel.setTranslateClipboardHotkeyModifier(UInt32(cmdKey), enabled: $0)
+                            appModel.setCaptureAndAskHotkeyModifier(UInt32(cmdKey), enabled: $0)
                         })
                     }
 
-                    Button("Reset Translate Clipboard Hotkey") {
-                        appModel.resetTranslateClipboardHotkeyToDefault()
+                    Button("Reset Capture & Ask Hotkey") {
+                        appModel.resetCaptureAndAskHotkeyToDefault()
                     }
                 }
 
@@ -319,18 +353,10 @@ struct SettingsView: View {
                     Text("Translate Selection")
                         .font(.caption.bold())
 
-                    Text("Select text in any app, press the hotkey, and Sasu will copy, translate, and paste the result without coming to the front.")
+                    Text("Select or highlight text, then press the hotkey. With Accessibility access, Sasu reads the selection directly; otherwise it uses a screenshot.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-
-                    HStack {
-                        Circle()
-                            .fill(appModel.hasAccessibilityAccess ? Color.green : Color.orange)
-                            .frame(width: 10, height: 10)
-                        Text(appModel.hasAccessibilityAccess ? "Accessibility permission granted" : "Accessibility permission required")
-                            .foregroundStyle(.secondary)
-                    }
 
                     Text("Current: \(appModel.translateSelectionHotkeyDescription)")
                         .foregroundStyle(.secondary)
@@ -365,6 +391,69 @@ struct SettingsView: View {
                         })
                     }
 
+                    Button("Reset Translate Selection Hotkey") {
+                        appModel.resetTranslateSelectionHotkeyToDefault()
+                    }
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Translate & Replace")
+                        .font(.caption.bold())
+
+                    Text("Select text in an editable field, then use this command to translate it in the reverse direction and replace it in place. This requires Accessibility permission.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Text("Current: \(appModel.translateAndReplaceHotkeyDescription)")
+                        .foregroundStyle(.secondary)
+
+                    Picker("Key", selection: $appModel.translateAndReplaceHotkeyKeyCode) {
+                        ForEach(HotkeyConfiguration.supportedKeys) { key in
+                            Text(key.name).tag(key.keyCode)
+                        }
+                    }
+                    .frame(maxWidth: 240)
+
+                    HStack {
+                        modifierToggle("Control", isEnabled: {
+                            appModel.translateAndReplaceHotkeyModifiers & UInt32(controlKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateAndReplaceHotkeyModifier(UInt32(controlKey), enabled: $0)
+                        })
+                        modifierToggle("Option", isEnabled: {
+                            appModel.translateAndReplaceHotkeyModifiers & UInt32(optionKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateAndReplaceHotkeyModifier(UInt32(optionKey), enabled: $0)
+                        })
+                        modifierToggle("Shift", isEnabled: {
+                            appModel.translateAndReplaceHotkeyModifiers & UInt32(shiftKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateAndReplaceHotkeyModifier(UInt32(shiftKey), enabled: $0)
+                        })
+                        modifierToggle("Command", isEnabled: {
+                            appModel.translateAndReplaceHotkeyModifiers & UInt32(cmdKey) != 0
+                        }, setEnabled: {
+                            appModel.setTranslateAndReplaceHotkeyModifier(UInt32(cmdKey), enabled: $0)
+                        })
+                    }
+
+                    Button("Reset Translate & Replace Hotkey") {
+                        appModel.resetTranslateAndReplaceHotkeyToDefault()
+                    }
+
+                    Divider()
+
+                    HStack {
+                        Circle()
+                            .fill(appModel.hasAccessibilityAccess ? Color.green : Color.orange)
+                            .frame(width: 10, height: 10)
+                        Text(appModel.hasAccessibilityAccess ? "Accessibility permission granted" : "Accessibility permission required")
+                            .foregroundStyle(.secondary)
+                    }
+
                     HStack {
                         Button("Open Accessibility Settings") {
                             appModel.openAccessibilitySettings()
@@ -384,19 +473,15 @@ struct SettingsView: View {
                     }
 
                     if appModel.shouldOfferAccessibilityRelaunch {
-                        Text("If you enabled Sasu in Accessibility settings, quit and reopen Sasu before Translate Selection works.")
+                        Text("If you enabled Sasu in Accessibility settings, quit and reopen Sasu before Translate & Replace works.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     } else {
-                        Text("After enabling Accessibility for Sasu, macOS usually requires quitting and reopening Sasu before Translate Selection works.")
+                        Text("After enabling Accessibility for Sasu, macOS usually requires quitting and reopening Sasu before Translate & Replace works.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Button("Reset Translate Selection Hotkey") {
-                        appModel.resetTranslateSelectionHotkeyToDefault()
                     }
                 }
             }
@@ -422,7 +507,7 @@ struct SettingsView: View {
     }
 
     private var captureSection: some View {
-        GroupBox("Capture") {
+        settingsGroup("Capture") {
             VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     Button("Test Screen Capture") {
@@ -504,5 +589,17 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func settingsGroup<Content: View>(
+        _ title: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        GroupBox {
+            content()
+        } label: {
+            Text(title)
+                .font(.title3.bold())
+        }
     }
 }

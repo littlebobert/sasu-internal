@@ -74,27 +74,23 @@ struct AnswerPanelView: View {
 
     private var onboardingLanguagePairPicker: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Choose your translation languages")
+            Text("Choose the language you translate from")
                 .font(.title3.bold())
 
-            Picker("Language pair", selection: $appModel.translationLanguagePair) {
-                ForEach(TranslationLanguagePair.allCases) { languagePair in
-                    Text(languagePair.label).tag(languagePair)
+            Picker("Translate from", selection: $appModel.translationSourceLanguage) {
+                ForEach(TranslationDirection.availableSourceLanguagesForUserInterface) { sourceLanguage in
+                    Text(sourceLanguage.label).tag(sourceLanguage)
                 }
             }
             .frame(maxWidth: 420)
 
-            if appModel.translationLanguagePair == .automatic {
-                let direction = TranslationDirection.forUserInterface(languagePair: .automatic)
-                Text("Automatic currently uses \(direction.expectedSourceLanguage) ↔ \(direction.targetLanguage) based on your primary macOS language. You can change this later in Settings.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("You can change this later in Settings.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            let direction = TranslationDirection.forUserInterface(
+                sourceLanguage: appModel.translationSourceLanguage
+            )
+            Text("Sasu reads \(direction.expectedSourceLanguage) into \(direction.targetLanguage), and translates editable text in the reverse direction. You can change this later in Settings.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -203,6 +199,20 @@ struct AnswerPanelView: View {
                                 .id(message.id)
                             }
 
+                            if !appModel.streamingResponseText.isEmpty {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Text("Sasu")
+                                        .font(.caption.bold())
+                                        .foregroundStyle(.blue)
+
+                                    Text(appModel.streamingResponseText)
+                                        .font(.system(size: appModel.transcriptFontSize))
+                                        .textSelection(.enabled)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .id("streaming-response")
+                            }
+
                             if appModel.shouldOfferPermissionRelaunch, appModel.errorMessage != nil {
                                 Button("Relaunch Sasu") {
                                     appModel.relaunchSasu()
@@ -219,6 +229,9 @@ struct AnswerPanelView: View {
                         scrollTranscriptToBottomAfterLayoutSettles(proxy)
                     }
                     .onChange(of: appModel.currentHighlightSuggestion) { _ in
+                        scrollTranscriptToBottom(proxy)
+                    }
+                    .onChange(of: appModel.streamingResponseText) { _ in
                         scrollTranscriptToBottom(proxy)
                     }
                 }
@@ -368,8 +381,11 @@ private struct TranscriptMessageView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-            } else if let clipboardSourceText {
-                clipboardSourceView(clipboardSourceText)
+            } else if let sourceTextDetails {
+                sourceTextView(
+                    sourceTextDetails.text,
+                    label: sourceTextDetails.label
+                )
             } else {
                 MarkdownText(markdown: message.text, fontSize: appModel.transcriptFontSize)
                     .frame(width: availableWidth, alignment: .leading)
@@ -380,10 +396,10 @@ private struct TranscriptMessageView: View {
     }
 
     @ViewBuilder
-    private func clipboardSourceView(_ text: String) -> some View {
+    private func sourceTextView(_ text: String, label: String) -> some View {
         if let sourceReadings = usefulSourceReadings {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Clipboard text:")
+                Text(label)
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -391,7 +407,7 @@ private struct TranscriptMessageView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            (Text("Clipboard text: ") + Text(text))
+            (Text("\(label) ") + Text(text))
                 .font(.system(size: appModel.transcriptFontSize))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -459,12 +475,16 @@ private struct TranscriptMessageView: View {
         }
     }
 
-    private var clipboardSourceText: String? {
-        let prefix = "Clipboard text: "
-        guard message.role == .user, message.text.hasPrefix(prefix) else {
-            return nil
+    private var sourceTextDetails: (label: String, text: String)? {
+        guard message.role == .user else { return nil }
+
+        for label in ["Clipboard text:", "Selected text:"] {
+            let prefix = "\(label) "
+            if message.text.hasPrefix(prefix) {
+                return (label, String(message.text.dropFirst(prefix.count)))
+            }
         }
 
-        return String(message.text.dropFirst(prefix.count))
+        return nil
     }
 }

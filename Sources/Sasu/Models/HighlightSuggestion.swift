@@ -4,6 +4,17 @@ import Foundation
 struct AssistantResult: Equatable {
     let answer: String
     let actionSuggestion: HighlightSuggestion?
+    let sourceText: String?
+
+    init(
+        answer: String,
+        actionSuggestion: HighlightSuggestion?,
+        sourceText: String? = nil
+    ) {
+        self.answer = answer
+        self.actionSuggestion = actionSuggestion
+        self.sourceText = sourceText
+    }
 }
 
 struct HighlightSuggestion: Codable, Equatable {

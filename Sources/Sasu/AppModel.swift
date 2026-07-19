@@ -34,8 +34,8 @@ final class AppModel: ObservableObject {
     @Published var automaticallyIncludeSafariPageContent: Bool {
         didSet { defaults.set(automaticallyIncludeSafariPageContent, forKey: Self.automaticallyIncludeSafariPageContentKey) }
     }
-    @Published var translationLanguagePair: TranslationLanguagePair {
-        didSet { defaults.set(translationLanguagePair.rawValue, forKey: Self.translationLanguagePairKey) }
+    @Published var translationSourceLanguage: TranslationSourceLanguage {
+        didSet { defaults.set(translationSourceLanguage.rawValue, forKey: Self.translationSourceLanguageKey) }
     }
     @Published var transcriptTextSize: Double {
         didSet {
@@ -66,16 +66,16 @@ final class AppModel: ObservableObject {
             updateHotkeyRegistration()
         }
     }
-    @Published var translateClipboardHotkeyKeyCode: UInt32 {
+    @Published var captureAndAskHotkeyKeyCode: UInt32 {
         didSet {
-            defaults.set(Int(translateClipboardHotkeyKeyCode), forKey: Self.translateClipboardHotkeyKeyCodeKey)
-            updateTranslateClipboardHotkeyRegistration()
+            defaults.set(Int(captureAndAskHotkeyKeyCode), forKey: Self.captureAndAskHotkeyKeyCodeKey)
+            updateCaptureAndAskHotkeyRegistration()
         }
     }
-    @Published var translateClipboardHotkeyModifiers: UInt32 {
+    @Published var captureAndAskHotkeyModifiers: UInt32 {
         didSet {
-            defaults.set(Int(translateClipboardHotkeyModifiers), forKey: Self.translateClipboardHotkeyModifiersKey)
-            updateTranslateClipboardHotkeyRegistration()
+            defaults.set(Int(captureAndAskHotkeyModifiers), forKey: Self.captureAndAskHotkeyModifiersKey)
+            updateCaptureAndAskHotkeyRegistration()
         }
     }
     @Published var translateSelectionHotkeyKeyCode: UInt32 {
@@ -90,10 +90,23 @@ final class AppModel: ObservableObject {
             updateTranslateSelectionHotkeyRegistration()
         }
     }
+    @Published var translateAndReplaceHotkeyKeyCode: UInt32 {
+        didSet {
+            defaults.set(Int(translateAndReplaceHotkeyKeyCode), forKey: Self.translateAndReplaceHotkeyKeyCodeKey)
+            updateTranslateAndReplaceHotkeyRegistration()
+        }
+    }
+    @Published var translateAndReplaceHotkeyModifiers: UInt32 {
+        didSet {
+            defaults.set(Int(translateAndReplaceHotkeyModifiers), forKey: Self.translateAndReplaceHotkeyModifiersKey)
+            updateTranslateAndReplaceHotkeyRegistration()
+        }
+    }
     @Published private(set) var hotkeyDescription = HotkeyConfiguration.defaultConfiguration.displayName
-    @Published private(set) var translateClipboardHotkeyDescription = HotkeyConfiguration.defaultTranslateClipboardConfiguration.displayName
+    @Published private(set) var captureAndAskHotkeyDescription = HotkeyConfiguration.defaultCaptureAndAskConfiguration.displayName
     @Published private(set) var translateSelectionHotkeyDescription = HotkeyConfiguration.defaultTranslateSelectionConfiguration.displayName
-    @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then press the hotkey or use Capture Screen."
+    @Published private(set) var translateAndReplaceHotkeyDescription = HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.displayName
+    @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then use the Sasu command wheel."
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
     @Published private(set) var shouldOfferAccessibilityRelaunch = false
@@ -107,6 +120,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isFirstLaunchOnboardingVisible = false
     @Published private(set) var isOnboardingGuidanceVisible = false
     @Published private(set) var transcriptMessages: [ChatTranscriptMessage] = []
+    @Published private(set) var streamingResponseText = ""
     @Published var followUpText = ""
     @Published private(set) var querySelectionNonce = 0
 
@@ -122,17 +136,25 @@ final class AppModel: ObservableObject {
     private static let serviceTierKey = "serviceTier"
     private static let imageDetailKey = "imageDetail"
     private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
-    private static let translationLanguagePairKey = "translationLanguagePair"
+    private static let translationSourceLanguageKey = "translationSourceLanguage"
     private static let transcriptTextSizeKey = "transcriptTextSize"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let safariPageSendConfirmationCharacterThreshold = 8_000
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
     private static let hotkeyKeyCodeKey = "hotkeyKeyCode"
     private static let hotkeyModifiersKey = "hotkeyModifiers"
-    private static let translateClipboardHotkeyKeyCodeKey = "translateClipboardHotkeyKeyCode"
-    private static let translateClipboardHotkeyModifiersKey = "translateClipboardHotkeyModifiers"
+    private static let captureAndAskHotkeyKeyCodeKey = "captureAndAskHotkeyKeyCode"
+    private static let captureAndAskHotkeyModifiersKey = "captureAndAskHotkeyModifiers"
     private static let translateSelectionHotkeyKeyCodeKey = "translateSelectionHotkeyKeyCode"
     private static let translateSelectionHotkeyModifiersKey = "translateSelectionHotkeyModifiers"
+    private static let translateAndReplaceHotkeyKeyCodeKey = "translateAndReplaceHotkeyKeyCode"
+    private static let translateAndReplaceHotkeyModifiersKey = "translateAndReplaceHotkeyModifiers"
+    private static let hasAcknowledgedTranslateAndReplaceAccessibilityPrimerKey =
+        "hasAcknowledgedTranslateAndReplaceAccessibilityPrimer"
+    private static let hasAnsweredTranslateSelectionAccessibilityPrimerKey =
+        "hasAnsweredTranslateSelectionAccessibilityPrimer"
+    private static let suppressTranslateSelectionAccessibilityPrimerKey =
+        "suppressTranslateSelectionAccessibilityPrimer"
     private static let hasCompletedFirstLaunchKey = "hasCompletedFirstLaunch"
     private static let hasCompletedFirstLaunchOnboardingKey = "hasCompletedFirstLaunchOnboarding"
     private static let shouldShowSettingsOnLaunchKey = "shouldShowSettingsOnLaunch"
@@ -165,21 +187,28 @@ final class AppModel: ObservableObject {
     private let screenshotPreviewWindowController: ScreenshotPreviewWindowController
     private let highlightOverlayController: HighlightOverlayController
     private let cursorProgressOverlayController: CursorProgressOverlayController
+    private let commandWheelController: CommandWheelController
     private var hotkeyManager: HotkeyManager?
-    private var translateClipboardHotkeyManager: HotkeyManager?
+    private var captureAndAskHotkeyManager: HotkeyManager?
     private var translateSelectionHotkeyManager: HotkeyManager?
+    private var translateAndReplaceHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
     private var highlightAutoHideTask: Task<Void, Never>?
     private var highlightClickMonitorStartTask: Task<Void, Never>?
     private var highlightGlobalClickMonitor: Any?
     private var highlightLocalClickMonitor: Any?
+    private var highlightAppActivationObserver: NSObjectProtocol?
+    private var highlightTargetBundleIdentifier: String?
     private var shouldRestoreAnswerWindowAfterHighlight = false
     private var windowsHiddenForHighlight: [NSWindow] = []
     private var shouldRelaunchAfterTerminate = false
     private var screenRecordingPrimerTask: Task<Void, Never>?
     private var shouldRestoreTranscriptAfterScreenRecordingPrompt = false
     private var shouldRestoreSettingsAfterScreenRecordingPrompt = false
+    private var shouldRestoreWindowsAfterAccessibilityPrompt = false
+    private var windowsHiddenForSystemPermissionPrompt: [NSWindow] = []
+    private var accessibilityPromptRestoreArmingTask: Task<Void, Never>?
     private var appActivationObserver: NSObjectProtocol?
     private var attentionRequestID: Int?
     private var isAwaitingAccessibilityGrant = false
@@ -211,6 +240,7 @@ final class AppModel: ObservableObject {
         self.screenshotPreviewWindowController = ScreenshotPreviewWindowController()
         self.highlightOverlayController = HighlightOverlayController()
         self.cursorProgressOverlayController = CursorProgressOverlayController()
+        self.commandWheelController = CommandWheelController()
         let savedAccessMode = defaults.string(forKey: Self.accessModeKey)
         self.accessMode = AccessMode(rawValue: savedAccessMode ?? "") ?? .invite
         self.backendBaseURLInput = defaults.string(forKey: Self.backendBaseURLKey) ?? Self.defaultBackendBaseURL
@@ -233,9 +263,20 @@ final class AppModel: ObservableObject {
         } else {
             self.automaticallyIncludeSafariPageContent = defaults.bool(forKey: Self.automaticallyIncludeSafariPageContentKey)
         }
-        self.translationLanguagePair = TranslationLanguagePair(
-            rawValue: defaults.string(forKey: Self.translationLanguagePairKey) ?? ""
-        ) ?? .automatic
+        let savedTranslationSourceLanguage = TranslationSourceLanguage(
+            rawValue: defaults.string(forKey: Self.translationSourceLanguageKey) ?? ""
+        )
+        let availableTranslationSourceLanguages =
+            TranslationDirection.availableSourceLanguagesForUserInterface
+        self.translationSourceLanguage =
+            savedTranslationSourceLanguage.flatMap { savedSourceLanguage in
+                availableTranslationSourceLanguages.contains(savedSourceLanguage)
+                    ? savedSourceLanguage
+                    : nil
+            }
+            ?? (availableTranslationSourceLanguages.contains(.japanese)
+                ? .japanese
+                : availableTranslationSourceLanguages[0])
         if defaults.object(forKey: Self.transcriptTextSizeKey) == nil {
             self.transcriptTextSize = Self.defaultTranscriptTextSize
         } else {
@@ -257,25 +298,43 @@ final class AppModel: ObservableObject {
         self.hotkeyModifiers = savedHotkeyModifiers == 0
             ? HotkeyConfiguration.defaultConfiguration.modifiers
             : savedHotkeyModifiers
-        let savedTranslateClipboardHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.translateClipboardHotkeyKeyCodeKey))
-        self.translateClipboardHotkeyKeyCode = savedTranslateClipboardHotkeyKeyCode == 0
-            ? HotkeyConfiguration.defaultTranslateClipboardConfiguration.keyCode
-            : savedTranslateClipboardHotkeyKeyCode
-        let savedTranslateClipboardHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateClipboardHotkeyModifiersKey))
-        self.translateClipboardHotkeyModifiers = savedTranslateClipboardHotkeyModifiers == 0
-            ? HotkeyConfiguration.defaultTranslateClipboardConfiguration.modifiers
-            : savedTranslateClipboardHotkeyModifiers
+        let savedCaptureAndAskHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.captureAndAskHotkeyKeyCodeKey))
+        self.captureAndAskHotkeyKeyCode = savedCaptureAndAskHotkeyKeyCode == 0
+            ? HotkeyConfiguration.defaultCaptureAndAskConfiguration.keyCode
+            : savedCaptureAndAskHotkeyKeyCode
+        let savedCaptureAndAskHotkeyModifiers = UInt32(defaults.integer(forKey: Self.captureAndAskHotkeyModifiersKey))
+        self.captureAndAskHotkeyModifiers = savedCaptureAndAskHotkeyModifiers == 0
+            ? HotkeyConfiguration.defaultCaptureAndAskConfiguration.modifiers
+            : savedCaptureAndAskHotkeyModifiers
         let savedTranslateSelectionHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.translateSelectionHotkeyKeyCodeKey))
-        self.translateSelectionHotkeyKeyCode = savedTranslateSelectionHotkeyKeyCode == 0
+        let savedTranslateSelectionHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateSelectionHotkeyModifiersKey))
+        let savedTranslateSelectionConfiguration = HotkeyConfiguration(
+            keyCode: savedTranslateSelectionHotkeyKeyCode,
+            modifiers: savedTranslateSelectionHotkeyModifiers
+        )
+        let shouldMigrateTranslateSelectionHotkey =
+            savedTranslateSelectionHotkeyKeyCode == 0
+            || savedTranslateSelectionHotkeyModifiers == 0
+            || savedTranslateSelectionConfiguration
+                == HotkeyConfiguration.legacyDefaultTranslateSelectionConfiguration
+        self.translateSelectionHotkeyKeyCode = shouldMigrateTranslateSelectionHotkey
             ? HotkeyConfiguration.defaultTranslateSelectionConfiguration.keyCode
             : savedTranslateSelectionHotkeyKeyCode
-        let savedTranslateSelectionHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateSelectionHotkeyModifiersKey))
-        self.translateSelectionHotkeyModifiers = savedTranslateSelectionHotkeyModifiers == 0
+        self.translateSelectionHotkeyModifiers = shouldMigrateTranslateSelectionHotkey
             ? HotkeyConfiguration.defaultTranslateSelectionConfiguration.modifiers
             : savedTranslateSelectionHotkeyModifiers
+        let savedTranslateAndReplaceHotkeyKeyCode = UInt32(defaults.integer(forKey: Self.translateAndReplaceHotkeyKeyCodeKey))
+        self.translateAndReplaceHotkeyKeyCode = savedTranslateAndReplaceHotkeyKeyCode == 0
+            ? HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.keyCode
+            : savedTranslateAndReplaceHotkeyKeyCode
+        let savedTranslateAndReplaceHotkeyModifiers = UInt32(defaults.integer(forKey: Self.translateAndReplaceHotkeyModifiersKey))
+        self.translateAndReplaceHotkeyModifiers = savedTranslateAndReplaceHotkeyModifiers == 0
+            ? HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.modifiers
+            : savedTranslateAndReplaceHotkeyModifiers
         self.hotkeyDescription = hotkeyConfiguration.displayName
-        self.translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
+        self.captureAndAskHotkeyDescription = captureAndAskHotkeyConfiguration.displayName
         self.translateSelectionHotkeyDescription = translateSelectionHotkeyConfiguration.displayName
+        self.translateAndReplaceHotkeyDescription = translateAndReplaceHotkeyConfiguration.displayName
         refreshStoredAPIKeyPreview()
         refreshStoredBackendAccessTokenPreview()
         if savedAccessMode == nil, !hasStoredBackendAccessToken, hasStoredAPIKey {
@@ -295,11 +354,14 @@ final class AppModel: ObservableObject {
         if hotkeyManager == nil {
             updateHotkeyRegistration()
         }
-        if translateClipboardHotkeyManager == nil {
-            updateTranslateClipboardHotkeyRegistration()
+        if captureAndAskHotkeyManager == nil {
+            updateCaptureAndAskHotkeyRegistration()
         }
         if translateSelectionHotkeyManager == nil {
             updateTranslateSelectionHotkeyRegistration()
+        }
+        if translateAndReplaceHotkeyManager == nil {
+            updateTranslateAndReplaceHotkeyRegistration()
         }
 
         registerAppActivationObserverIfNeeded()
@@ -326,7 +388,7 @@ final class AppModel: ObservableObject {
         guard hasAccessibilityAccess else {
             if isAwaitingAccessibilityGrant {
                 shouldOfferAccessibilityRelaunch = true
-                statusMessage = "If you enabled Sasu in Accessibility settings, relaunch Sasu for Translate Selection to work."
+                statusMessage = "If you enabled Sasu in Accessibility settings, relaunch Sasu for Translate & Replace to work."
             }
             return
         }
@@ -382,6 +444,8 @@ final class AppModel: ObservableObject {
     }
 
     func showWindowForReopen() {
+        restoreWindowsAfterSystemPermissionPromptIfNeeded()
+
         if isFirstLaunchOnboardingVisible || (!CGPreflightScreenCaptureAccess() && shouldShowFirstLaunchOnboarding) {
             showFirstLaunchOnboarding()
         } else if hasConfiguredAccess {
@@ -428,7 +492,7 @@ final class AppModel: ObservableObject {
 
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
             return
         }
 
@@ -441,18 +505,43 @@ final class AppModel: ObservableObject {
     }
 
     func contactDeveloperAboutOnboarding() {
-        let email = "justin.garcia@gmail.com"
-        let subject = "Question about Sasu"
+        if let url = Self.developerContactURL(subject: "Question about Sasu") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    private static func developerContactURL(subject: String) -> URL? {
         var components = URLComponents()
         components.scheme = "mailto"
-        components.path = email
+        components.path = "justin.garcia@gmail.com"
         components.queryItems = [
             URLQueryItem(name: "subject", value: subject)
         ]
+        return components.url
+    }
 
-        if let url = components.url {
-            NSWorkspace.shared.open(url)
+    private static func privacyContactLink() -> NSTextField? {
+        guard let url = developerContactURL(subject: "Privacy question about Sasu") else {
+            return nil
         }
+
+        let text = "Have questions about privacy?"
+        let attributedText = NSMutableAttributedString(
+            string: text,
+            attributes: [
+                .font: NSFont.systemFont(ofSize: NSFont.smallSystemFontSize),
+                .link: url,
+                .foregroundColor: NSColor.linkColor,
+                .underlineStyle: NSUnderlineStyle.single.rawValue
+            ]
+        )
+
+        let field = NSTextField(labelWithAttributedString: attributedText)
+        field.isSelectable = true
+        field.allowsEditingTextAttributes = true
+        field.maximumNumberOfLines = 1
+        field.frame = NSRect(x: 0, y: 0, width: 180, height: 18)
+        return field
     }
 
     private var hasConfiguredAccess: Bool {
@@ -757,10 +846,6 @@ final class AppModel: ObservableObject {
         transcriptTextSize -= Self.transcriptTextSizeStep
     }
 
-    func resetTranscriptTextSize() {
-        transcriptTextSize = Self.defaultTranscriptTextSize
-    }
-
     func setHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
         if enabled {
             hotkeyModifiers |= modifier
@@ -778,27 +863,27 @@ final class AppModel: ObservableObject {
     func resetHotkeyToDefault() {
         hotkeyKeyCode = HotkeyConfiguration.defaultConfiguration.keyCode
         hotkeyModifiers = HotkeyConfiguration.defaultConfiguration.modifiers
-        statusMessage = "Hotkey reset to \(hotkeyDescription)."
+        statusMessage = "Command wheel hotkey reset to \(hotkeyDescription)."
     }
 
-    func setTranslateClipboardHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
+    func setCaptureAndAskHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
         if enabled {
-            translateClipboardHotkeyModifiers |= modifier
+            captureAndAskHotkeyModifiers |= modifier
         } else {
-            let updatedModifiers = translateClipboardHotkeyModifiers & ~modifier
+            let updatedModifiers = captureAndAskHotkeyModifiers & ~modifier
             guard updatedModifiers != 0 else {
-                errorMessage = "Choose at least one modifier for the Translate Clipboard hotkey."
+                errorMessage = "Choose at least one modifier for the Capture & Ask hotkey."
                 return
             }
 
-            translateClipboardHotkeyModifiers = updatedModifiers
+            captureAndAskHotkeyModifiers = updatedModifiers
         }
     }
 
-    func resetTranslateClipboardHotkeyToDefault() {
-        translateClipboardHotkeyKeyCode = HotkeyConfiguration.defaultTranslateClipboardConfiguration.keyCode
-        translateClipboardHotkeyModifiers = HotkeyConfiguration.defaultTranslateClipboardConfiguration.modifiers
-        statusMessage = "Translate Clipboard hotkey reset to \(translateClipboardHotkeyDescription)."
+    func resetCaptureAndAskHotkeyToDefault() {
+        captureAndAskHotkeyKeyCode = HotkeyConfiguration.defaultCaptureAndAskConfiguration.keyCode
+        captureAndAskHotkeyModifiers = HotkeyConfiguration.defaultCaptureAndAskConfiguration.modifiers
+        statusMessage = "Capture & Ask hotkey reset to \(captureAndAskHotkeyDescription)."
     }
 
     func setTranslateSelectionHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
@@ -821,6 +906,28 @@ final class AppModel: ObservableObject {
         statusMessage = "Translate Selection hotkey reset to \(translateSelectionHotkeyDescription)."
     }
 
+    func setTranslateAndReplaceHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
+        if enabled {
+            translateAndReplaceHotkeyModifiers |= modifier
+        } else {
+            let updatedModifiers = translateAndReplaceHotkeyModifiers & ~modifier
+            guard updatedModifiers != 0 else {
+                errorMessage = "Choose at least one modifier for the Translate & Replace hotkey."
+                return
+            }
+
+            translateAndReplaceHotkeyModifiers = updatedModifiers
+        }
+    }
+
+    func resetTranslateAndReplaceHotkeyToDefault() {
+        translateAndReplaceHotkeyKeyCode =
+            HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.keyCode
+        translateAndReplaceHotkeyModifiers =
+            HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.modifiers
+        statusMessage = "Translate & Replace hotkey reset to \(translateAndReplaceHotkeyDescription)."
+    }
+
     func captureAndAsk() {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
@@ -830,6 +937,65 @@ final class AppModel: ObservableObject {
 
         currentRequestTask = Task {
             await prepareScreenshotForQuery()
+        }
+    }
+
+    func showCommandWheel() {
+        let sourceApplication = NSWorkspace.shared.frontmostApplication
+        commandWheelController.presentOrAdvance(
+            hotkeyModifiers: hotkeyModifiers
+        ) { [weak self] command in
+            guard let self else { return }
+            switch command {
+            case .captureAndAsk:
+                captureAndAsk()
+            case .translateSelection:
+                translateVisibleSelection(sourceApplication: sourceApplication)
+            case .translateAndReplace:
+                translateAndReplaceSelection(sourceApplication: sourceApplication)
+            }
+        }
+    }
+
+    func translateVisibleSelection(sourceApplication: NSRunningApplication? = nil) {
+        guard !isRequestInFlight else { return }
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            return
+        }
+
+        if selectionAutomationService.hasAccessibilityAccess() {
+            sourceApplication?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            currentRequestTask = Task {
+                await runTranslateSelectedText()
+            }
+            return
+        }
+
+        let sourceApplication = sourceApplication ?? NSWorkspace.shared.frontmostApplication
+        switch presentTranslateSelectionAccessibilityPrimerIfNeeded() {
+        case .proceed:
+            requestAccessibilityAccess()
+            return
+        case .notNow, .dontAskAgain:
+            sourceApplication?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+        case .notNeeded:
+            break
+        }
+
+        let direction = TranslationDirection.forUserInterface(
+            sourceLanguage: translationSourceLanguage
+        )
+        let prompt = """
+        Translate only the text that is visibly selected or highlighted on screen. The user's language pair is \(direction.expectedSourceLanguage) and \(direction.targetLanguage). Detect which of those two languages the selected text is written in, then translate it into the other language. Put the exact selected original text in sourceText and return the translation clearly in answer. If no text is visibly selected, set sourceText to null and say that no selected text could be found.
+        """
+
+        currentRequestTask = Task {
+            try? await Task.sleep(nanoseconds: 120_000_000)
+            await runCapture(
+                prompt: prompt,
+                mode: .visibleSelectionTranslation
+            )
         }
     }
 
@@ -845,13 +1011,23 @@ final class AppModel: ObservableObject {
         }
     }
 
-    func translateSelection() {
+    func translateAndReplaceSelection(sourceApplication: NSRunningApplication? = nil) {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
             statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
             return
         }
 
+        guard selectionAutomationService.hasAccessibilityAccess() else {
+            guard presentEditableSelectionAccessibilityPrimer() else {
+                statusMessage = "Translate & Replace was cancelled."
+                return
+            }
+            requestAccessibilityAccess()
+            return
+        }
+
+        sourceApplication?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
         currentRequestTask = Task {
             await runTranslateSelection()
         }
@@ -881,6 +1057,8 @@ final class AppModel: ObservableObject {
         currentRequestTask?.cancel()
         currentRequestTask = nil
         isRequestInFlight = false
+        streamingResponseText = ""
+        cursorProgressOverlayController.hide()
         statusMessage = "Request stopped."
         errorMessage = nil
         transcriptMessages.append(ChatTranscriptMessage(role: .error, text: "Request stopped."))
@@ -955,6 +1133,9 @@ final class AppModel: ObservableObject {
                     screenshot: lastScreenshot
                 )
                 self.isHighlightVisible = true
+                self.startHighlightAppSwitchMonitoring(
+                    targetBundleIdentifier: lastScreenshot.frontmostApplicationBundleIdentifier
+                )
             }
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
@@ -974,14 +1155,16 @@ final class AppModel: ObservableObject {
 
     func hideHighlight(
         restoreAnswerWindow: Bool = false,
-        restoreWhenAppActivates: Bool = false
+        restoreWhenAppActivates: Bool = false,
+        immediately: Bool = false
     ) {
         highlightAutoHideTask?.cancel()
         highlightAutoHideTask = nil
         highlightClickMonitorStartTask?.cancel()
         highlightClickMonitorStartTask = nil
         stopHighlightClickMonitoring()
-        highlightOverlayController.hide()
+        stopHighlightAppSwitchMonitoring()
+        highlightOverlayController.hide(immediately: immediately)
         isHighlightVisible = false
 
         if restoreAnswerWindow, shouldRestoreAnswerWindowAfterHighlight {
@@ -1009,7 +1192,7 @@ final class AppModel: ObservableObject {
                 self?.cancelUserAttentionRequestIfNeeded()
                 self?.closeUnmanagedSettingsWindows()
                 self?.restoreHighlightWindowsAfterUserReturn()
-                self?.restoreWindowsAfterScreenRecordingPermissionIfNeeded()
+                self?.restoreWindowsAfterSystemPermissionPromptIfNeeded()
                 self?.refreshAccessibilityPermissionState()
                 self?.refreshScreenRecordingPermissionState()
             }
@@ -1062,6 +1245,38 @@ final class AppModel: ObservableObject {
             NSEvent.removeMonitor(highlightLocalClickMonitor)
             self.highlightLocalClickMonitor = nil
         }
+    }
+
+    private func startHighlightAppSwitchMonitoring(targetBundleIdentifier: String?) {
+        stopHighlightAppSwitchMonitoring()
+        highlightTargetBundleIdentifier = targetBundleIdentifier
+        highlightAppActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+                return
+            }
+
+            Task { @MainActor in
+                guard let self, self.isHighlightVisible else { return }
+                guard let targetBundleIdentifier = self.highlightTargetBundleIdentifier else {
+                    self.highlightTargetBundleIdentifier = application.bundleIdentifier
+                    return
+                }
+                guard application.bundleIdentifier != targetBundleIdentifier else { return }
+                self.hideHighlight(restoreWhenAppActivates: true, immediately: true)
+            }
+        }
+    }
+
+    private func stopHighlightAppSwitchMonitoring() {
+        if let highlightAppActivationObserver {
+            NSWorkspace.shared.notificationCenter.removeObserver(highlightAppActivationObserver)
+            self.highlightAppActivationObserver = nil
+        }
+        highlightTargetBundleIdentifier = nil
     }
 
     func openScreenRecordingSettings() {
@@ -1142,9 +1357,117 @@ final class AppModel: ObservableObject {
     func requestAccessibilityAccess() {
         isAwaitingAccessibilityGrant = true
         shouldOfferAccessibilityRelaunch = false
+        accessibilityPromptRestoreArmingTask?.cancel()
+        shouldRestoreWindowsAfterAccessibilityPrompt = false
+        hideWindowsForSystemPermissionPrompt()
         selectionAutomationService.requestAccessibilityAccess()
+        accessibilityPromptRestoreArmingTask = Task { @MainActor [weak self] in
+            // The activation notification generated by Sasu's own explanation
+            // can arrive after the native AX prompt opens. Ignore that stale
+            // notification so it cannot restore Sasu above the system dialog.
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            guard !Task.isCancelled else { return }
+            self?.shouldRestoreWindowsAfterAccessibilityPrompt = true
+        }
         statusMessage = "Approve the macOS Accessibility prompt, or enable Sasu in System Settings, then relaunch Sasu."
         refreshAccessibilityPermissionState()
+    }
+
+    private enum TranslateSelectionAccessibilityDecision {
+        case proceed
+        case notNow
+        case dontAskAgain
+        case notNeeded
+    }
+
+    private func presentTranslateSelectionAccessibilityPrimerIfNeeded()
+        -> TranslateSelectionAccessibilityDecision {
+        if defaults.bool(forKey: Self.suppressTranslateSelectionAccessibilityPrimerKey)
+            || defaults.bool(forKey: Self.hasAnsweredTranslateSelectionAccessibilityPrimerKey) {
+            return .notNeeded
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Translate Selected Text Faster?"
+        alert.informativeText = """
+        With Accessibility permission, Translate Selection can copy highlighted text directly instead of taking a screenshot. This makes translations faster and avoids sending a screenshot.
+
+        Accessibility also enables Translate & Replace, which can replace editable selections in place. Sasu uses this access only when you choose one of those commands.
+        """
+        alert.addButton(withTitle: "Proceed")
+        alert.addButton(withTitle: "Not Now")
+        alert.addButton(withTitle: "Don’t Ask Again")
+        alert.accessoryView = Self.privacyContactLink()
+
+        switch alert.runModal() {
+        case .alertFirstButtonReturn:
+            defaults.set(
+                true,
+                forKey: Self.hasAnsweredTranslateSelectionAccessibilityPrimerKey
+            )
+            DiagnosticLogger.log(
+                "User continued to Accessibility access from Translate Selection.",
+                category: "Permissions"
+            )
+            return .proceed
+        case .alertThirdButtonReturn:
+            defaults.set(
+                true,
+                forKey: Self.suppressTranslateSelectionAccessibilityPrimerKey
+            )
+            DiagnosticLogger.log(
+                "User suppressed the Translate Selection Accessibility explanation.",
+                category: "Permissions"
+            )
+            return .dontAskAgain
+        default:
+            DiagnosticLogger.log(
+                "User postponed Accessibility access from Translate Selection.",
+                category: "Permissions"
+            )
+            return .notNow
+        }
+    }
+
+    private func presentEditableSelectionAccessibilityPrimer() -> Bool {
+        if defaults.bool(forKey: Self.hasAcknowledgedTranslateAndReplaceAccessibilityPrimerKey) {
+            return true
+        }
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .informational
+        alert.messageText = "Enable Translate & Replace?"
+        alert.informativeText = """
+        Translate & Replace copies selected text from the app you are editing, translates it into your chosen language, and replaces the selection in place.
+
+        macOS requires Accessibility permission so Sasu can send Copy and Paste commands. Sasu uses this access only when you choose Translate Selection or Translate & Replace. Translate Selection can still fall back to a screenshot if you do not grant access.
+        """
+        alert.addButton(withTitle: "Proceed")
+        alert.addButton(withTitle: "Not Now")
+        alert.accessoryView = Self.privacyContactLink()
+
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            DiagnosticLogger.log(
+                "User postponed Accessibility access for Translate & Replace.",
+                category: "Permissions"
+            )
+            return false
+        }
+
+        defaults.set(
+            true,
+            forKey: Self.hasAcknowledgedTranslateAndReplaceAccessibilityPrimerKey
+        )
+        DiagnosticLogger.log(
+            "User continued to Accessibility access for Translate & Replace.",
+            category: "Permissions"
+        )
+        return true
     }
 
     private func presentScreenRecordingPrimerIfNeeded() {
@@ -1184,12 +1507,13 @@ final class AppModel: ObservableObject {
             alert.alertStyle = .informational
             alert.messageText = "Sasu Needs Screen Recording"
             alert.informativeText = """
-            Sasu captures your screen only when you press the hotkey or Capture Screen, then sends that screenshot to OpenAI with your question.
+            Sasu captures your screen only when you choose Capture & Ask or Capture Screen, then sends that screenshot to OpenAI with your question.
 
             macOS requires Screen Recording permission before Sasu can see the page or app you want help with.
             """
             alert.addButton(withTitle: "Accept Screen Recording")
             alert.addButton(withTitle: "Not Yet")
+            alert.accessoryView = Self.privacyContactLink()
 
             switch alert.runModal() {
             case .alertFirstButtonReturn:
@@ -1209,7 +1533,7 @@ final class AppModel: ObservableObject {
 
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
             restoreWindowsAfterScreenRecordingPrompt()
             return
         }
@@ -1230,7 +1554,7 @@ final class AppModel: ObservableObject {
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             DiagnosticLogger.log("Screen Recording permission granted immediately.", category: "Permissions")
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
             restoreWindowsAfterScreenRecordingPrompt()
         } else {
             DiagnosticLogger.log("Screen Recording permission not granted after request.", category: "Permissions")
@@ -1249,32 +1573,44 @@ final class AppModel: ObservableObject {
     }
 
     private func hideWindowsForSystemPermissionPrompt() {
-        answerWindowController.hide()
-        settingsWindowController.hide()
+        let newlyHiddenWindows = Self.hideVisibleSasuWindowsForCapture()
+        for window in newlyHiddenWindows
+        where !windowsHiddenForSystemPermissionPrompt.contains(where: { $0 === window }) {
+            windowsHiddenForSystemPermissionPrompt.append(window)
+        }
     }
 
-    private func restoreWindowsAfterScreenRecordingPermissionIfNeeded() {
-        guard shouldRestoreTranscriptAfterScreenRecordingPrompt
+    private func restoreWindowsAfterSystemPermissionPromptIfNeeded() {
+        let wasWaitingForScreenRecording = shouldRestoreTranscriptAfterScreenRecordingPrompt
             || shouldRestoreSettingsAfterScreenRecordingPrompt
+        guard wasWaitingForScreenRecording
+            || shouldRestoreWindowsAfterAccessibilityPrompt
         else { return }
 
-        if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
+        if wasWaitingForScreenRecording,
+           ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) or use Capture Screen."
+            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
         }
 
         restoreWindowsAfterScreenRecordingPrompt()
     }
 
     private func restoreWindowsAfterScreenRecordingPrompt() {
-        if shouldRestoreSettingsAfterScreenRecordingPrompt {
+        if !windowsHiddenForSystemPermissionPrompt.isEmpty {
+            Self.restoreWindows(windowsHiddenForSystemPermissionPrompt)
+        } else if shouldRestoreSettingsAfterScreenRecordingPrompt {
             showSettingsWindowWithStandardOrdering()
         } else if shouldRestoreTranscriptAfterScreenRecordingPrompt {
             answerWindowController.show(appModel: self)
         }
 
+        windowsHiddenForSystemPermissionPrompt.removeAll()
+        accessibilityPromptRestoreArmingTask?.cancel()
+        accessibilityPromptRestoreArmingTask = nil
         shouldRestoreTranscriptAfterScreenRecordingPrompt = false
         shouldRestoreSettingsAfterScreenRecordingPrompt = false
+        shouldRestoreWindowsAfterAccessibilityPrompt = false
     }
 
     func relaunchSasu() {
@@ -1300,10 +1636,10 @@ final class AppModel: ObservableObject {
         HotkeyConfiguration(keyCode: hotkeyKeyCode, modifiers: hotkeyModifiers)
     }
 
-    private var translateClipboardHotkeyConfiguration: HotkeyConfiguration {
+    private var captureAndAskHotkeyConfiguration: HotkeyConfiguration {
         HotkeyConfiguration(
-            keyCode: translateClipboardHotkeyKeyCode,
-            modifiers: translateClipboardHotkeyModifiers
+            keyCode: captureAndAskHotkeyKeyCode,
+            modifiers: captureAndAskHotkeyModifiers
         )
     }
 
@@ -1314,8 +1650,15 @@ final class AppModel: ObservableObject {
         )
     }
 
+    private var translateAndReplaceHotkeyConfiguration: HotkeyConfiguration {
+        HotkeyConfiguration(
+            keyCode: translateAndReplaceHotkeyKeyCode,
+            modifiers: translateAndReplaceHotkeyModifiers
+        )
+    }
+
     private var hotkeyReadinessMessage: String {
-        "Ready. Press \(hotkeyDescription) to capture, \(translateClipboardHotkeyDescription) to translate clipboard, or \(translateSelectionHotkeyDescription) to translate selection."
+        "Ready. Use \(hotkeyDescription) for the wheel, \(captureAndAskHotkeyDescription) to capture and ask, \(translateSelectionHotkeyDescription) to translate a visible selection, or \(translateAndReplaceHotkeyDescription) to translate and replace editable text."
     }
 
     private func updateHotkeyRegistration() {
@@ -1325,7 +1668,7 @@ final class AppModel: ObservableObject {
         hotkeyDescription = hotkeyConfiguration.displayName
         let manager = HotkeyManager(configuration: hotkeyConfiguration, identifier: 1) { [weak self] in
             Task { @MainActor in
-                self?.captureAndAsk()
+                self?.showCommandWheel()
             }
         }
 
@@ -1336,29 +1679,29 @@ final class AppModel: ObservableObject {
             statusMessage = hotkeyReadinessMessage
         } catch {
             errorMessage = "Could not register \(hotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use Capture Screen from the app while the hotkey is unavailable."
+            statusMessage = "Use the Sasu menu while the command wheel hotkey is unavailable."
         }
     }
 
-    private func updateTranslateClipboardHotkeyRegistration() {
-        translateClipboardHotkeyManager?.unregister()
-        translateClipboardHotkeyManager = nil
+    private func updateCaptureAndAskHotkeyRegistration() {
+        captureAndAskHotkeyManager?.unregister()
+        captureAndAskHotkeyManager = nil
 
-        translateClipboardHotkeyDescription = translateClipboardHotkeyConfiguration.displayName
-        let manager = HotkeyManager(configuration: translateClipboardHotkeyConfiguration, identifier: 2) { [weak self] in
+        captureAndAskHotkeyDescription = captureAndAskHotkeyConfiguration.displayName
+        let manager = HotkeyManager(configuration: captureAndAskHotkeyConfiguration, identifier: 2) { [weak self] in
             Task { @MainActor in
-                self?.translateClipboard()
+                self?.captureAndAsk()
             }
         }
 
         do {
             try manager.register()
-            translateClipboardHotkeyManager = manager
+            captureAndAskHotkeyManager = manager
             errorMessage = nil
             statusMessage = hotkeyReadinessMessage
         } catch {
-            errorMessage = "Could not register \(translateClipboardHotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use Translate Clipboard from the app while the hotkey is unavailable."
+            errorMessage = "Could not register \(captureAndAskHotkeyDescription): \(error.localizedDescription)"
+            statusMessage = "Use Capture & Ask from the app while the hotkey is unavailable."
         }
     }
 
@@ -1369,7 +1712,7 @@ final class AppModel: ObservableObject {
         translateSelectionHotkeyDescription = translateSelectionHotkeyConfiguration.displayName
         let manager = HotkeyManager(configuration: translateSelectionHotkeyConfiguration, identifier: 3) { [weak self] in
             Task { @MainActor in
-                self?.translateSelection()
+                self?.translateVisibleSelection()
             }
         }
 
@@ -1381,6 +1724,31 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = "Could not register \(translateSelectionHotkeyDescription): \(error.localizedDescription)"
             statusMessage = "Use Translate Selection from the app while the hotkey is unavailable."
+        }
+    }
+
+    private func updateTranslateAndReplaceHotkeyRegistration() {
+        translateAndReplaceHotkeyManager?.unregister()
+        translateAndReplaceHotkeyManager = nil
+
+        translateAndReplaceHotkeyDescription = translateAndReplaceHotkeyConfiguration.displayName
+        let manager = HotkeyManager(
+            configuration: translateAndReplaceHotkeyConfiguration,
+            identifier: 4
+        ) { [weak self] in
+            Task { @MainActor in
+                self?.translateAndReplaceSelection()
+            }
+        }
+
+        do {
+            try manager.register()
+            translateAndReplaceHotkeyManager = manager
+            errorMessage = nil
+            statusMessage = hotkeyReadinessMessage
+        } catch {
+            errorMessage = "Could not register \(translateAndReplaceHotkeyDescription): \(error.localizedDescription)"
+            statusMessage = "Use Translate & Replace from the app while the hotkey is unavailable."
         }
     }
 
@@ -1435,6 +1803,7 @@ final class AppModel: ObservableObject {
 
     private func runTranslateClipboard() async {
         isRequestInFlight = true
+        streamingResponseText = ""
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         currentHighlightSuggestion = nil
@@ -1463,6 +1832,7 @@ final class AppModel: ObservableObject {
             let credential = try requestCredential()
 
             statusMessage = "Translating clipboard..."
+            cursorProgressOverlayController.show(status: "Translating…")
             answerWindowController.show(appModel: self)
             let result = try await openAIClient.translateClipboardText(
                 credential: credential,
@@ -1471,9 +1841,12 @@ final class AppModel: ObservableObject {
                 serviceTier: serviceTier,
                 sourceText: sourceText,
                 translationDirection: TranslationDirection.forUserInterface(
-                    languagePair: translationLanguagePair
+                    sourceLanguage: translationSourceLanguage
                 ),
-                conversationContext: conversationContext
+                conversationContext: conversationContext,
+                onPartialAnswer: { [weak self] partialAnswer in
+                    await self?.receiveStreamedAnswer(partialAnswer)
+                }
             )
             try Task.checkCancellation()
             let translation = "Translation: \(Self.normalizedTranslationText(result))"
@@ -1499,6 +1872,99 @@ final class AppModel: ObservableObject {
         }
 
         isRequestInFlight = false
+        streamingResponseText = ""
+        cursorProgressOverlayController.hide()
+        currentRequestTask = nil
+        let shouldActivateAnswerWindow = NSApp.isActive
+        answerWindowController.show(appModel: self, activate: shouldActivateAnswerWindow)
+        if !shouldActivateAnswerWindow {
+            requestUserAttentionIfNeeded()
+        }
+    }
+
+    private func runTranslateSelectedText() async {
+        isRequestInFlight = true
+        streamingResponseText = ""
+        errorMessage = nil
+        currentHighlightSuggestion = nil
+        hideHighlight()
+        statusMessage = "Reading selected text..."
+        cursorProgressOverlayController.show(status: "Reading selection…")
+
+        var pasteboardBackup: PasteboardBackup?
+
+        do {
+            try Task.checkCancellation()
+            let copiedSelection = try await selectionAutomationService.copySelectedText()
+            pasteboardBackup = copiedSelection.backup
+            let sourceText = copiedSelection.text
+            copiedSelection.backup.restore()
+            pasteboardBackup = nil
+
+            let sourceReadings = translationSourceLanguage == .japanese
+                ? JapaneseReadingService.readings(for: sourceText)
+                : nil
+            transcriptMessages.append(
+                ChatTranscriptMessage(
+                    role: .user,
+                    text: "Selected text: \(sourceText)",
+                    sourceReadings: sourceReadings
+                )
+            )
+
+            try Task.checkCancellation()
+            let credential = try requestCredential()
+            statusMessage = "Translating selected text..."
+            cursorProgressOverlayController.update(status: "Translating…")
+            answerWindowController.show(appModel: self)
+
+            let result = try await openAIClient.translateClipboardText(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                serviceTier: serviceTier,
+                sourceText: sourceText,
+                translationDirection: TranslationDirection.forUserInterface(
+                    sourceLanguage: translationSourceLanguage
+                ),
+                conversationContext: nil,
+                onPartialAnswer: { [weak self] partialAnswer in
+                    await self?.receiveStreamedAnswer(partialAnswer)
+                }
+            )
+            try Task.checkCancellation()
+
+            let translation = Self.normalizedTranslationText(result)
+            lastResponse = AssistantResponse(
+                text: translation,
+                prompt: "Translate selection",
+                actionSuggestion: nil
+            )
+            transcriptMessages.append(
+                ChatTranscriptMessage(role: .assistant, text: translation)
+            )
+            statusMessage = "Translation ready."
+            DiagnosticLogger.log(
+                "Selected text translation ready. sourceCharacters=\(sourceText.count)",
+                category: "OpenAI"
+            )
+        } catch is CancellationError {
+            pasteboardBackup?.restore()
+            statusMessage = "Request stopped."
+            errorMessage = nil
+        } catch {
+            pasteboardBackup?.restore()
+            errorMessage = error.localizedDescription
+            transcriptMessages.append(
+                ChatTranscriptMessage(role: .error, text: error.localizedDescription)
+            )
+            statusMessage = "Translation failed."
+            requestUserAttentionIfNeeded()
+        }
+
+        isRequestInFlight = false
+        streamingResponseText = ""
+        cursorProgressOverlayController.hide()
         currentRequestTask = nil
         let shouldActivateAnswerWindow = NSApp.isActive
         answerWindowController.show(appModel: self, activate: shouldActivateAnswerWindow)
@@ -1509,7 +1975,7 @@ final class AppModel: ObservableObject {
 
     private func runTranslateSelection() async {
         isRequestInFlight = true
-        cursorProgressOverlayController.show()
+        cursorProgressOverlayController.show(status: "Translating selection…")
         defer {
             cursorProgressOverlayController.hide()
         }
@@ -1525,9 +1991,7 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
 
             guard selectionAutomationService.hasAccessibilityAccess() else {
-                isAwaitingAccessibilityGrant = true
-                shouldOfferAccessibilityRelaunch = true
-                selectionAutomationService.requestAccessibilityAccess()
+                requestAccessibilityAccess()
                 throw SelectionAutomationError.accessibilityRequired
             }
 
@@ -1544,8 +2008,8 @@ final class AppModel: ObservableObject {
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
                 sourceText: sourceText,
-                translationDirection: TranslationDirection.forUserInterface(
-                    languagePair: translationLanguagePair
+                translationDirection: TranslationDirection.forEditableSelectionReplacement(
+                    sourceLanguage: translationSourceLanguage
                 ),
                 conversationContext: nil,
                 forSelectionReplacement: true
@@ -1593,14 +2057,36 @@ final class AppModel: ObservableObject {
         )
     }
 
-    private func runCapture(prompt: String, reuseLastScreenshot: Bool = false) async {
+    private enum CaptureRequestMode {
+        case question
+        case visibleSelectionTranslation
+
+        var showsCaptureDetailsInTranscript: Bool {
+            self == .question
+        }
+
+        var includesSafariPageContext: Bool {
+            self == .question
+        }
+    }
+
+    private func runCapture(
+        prompt: String,
+        reuseLastScreenshot: Bool = false,
+        mode: CaptureRequestMode = .question
+    ) async {
         isRequestInFlight = true
+        streamingResponseText = ""
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
-        statusMessage = reuseLastScreenshot ? "Sending follow-up..." : "Capturing screen..."
+        statusMessage = mode == .visibleSelectionTranslation
+            ? "Reading visible selection..."
+            : (reuseLastScreenshot ? "Sending follow-up..." : "Capturing screen...")
         Self.logger.info("Starting capture flow. reuseLastScreenshot=\(reuseLastScreenshot), model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public), imageDetail=\(self.imageDetail, privacy: .public)")
-        let conversationContext = transcriptContextForRequest()
-        transcriptMessages.append(ChatTranscriptMessage(role: .user, text: prompt))
+        let conversationContext = mode == .question ? transcriptContextForRequest() : nil
+        if mode.showsCaptureDetailsInTranscript {
+            transcriptMessages.append(ChatTranscriptMessage(role: .user, text: prompt))
+        }
 
         do {
             try Task.checkCancellation()
@@ -1612,11 +2098,15 @@ final class AppModel: ObservableObject {
             } else {
                 try Task.checkCancellation()
                 let capturedScreenshot = try await captureMainDisplayWithSasuWindowsHidden()
-                screenshot = await screenshotIncludingSafariPageContextIfNeeded(capturedScreenshot)
+                screenshot = mode.includesSafariPageContext
+                    ? await screenshotIncludingSafariPageContextIfNeeded(capturedScreenshot)
+                    : capturedScreenshot
                 lastScreenshot = screenshot
                 screenshotPreviewImage = NSImage(data: screenshot.pngData)
                 isScreenshotPrepared = true
-                appendScreenshotMessage(for: screenshot)
+                if mode.showsCaptureDetailsInTranscript {
+                    appendScreenshotMessage(for: screenshot)
+                }
             }
             try Task.checkCancellation()
             screenshot = confirmLargeSafariPageContextBeforeSending(screenshot)
@@ -1624,6 +2114,7 @@ final class AppModel: ObservableObject {
             Self.logger.info("Screenshot ready. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
 
             statusMessage = "Asking OpenAI..."
+            cursorProgressOverlayController.show(status: "Asking OpenAI…")
             answerWindowController.show(appModel: self)
             let result = try await openAIClient.askAboutScreenshot(
                 credential: credential,
@@ -1631,18 +2122,34 @@ final class AppModel: ObservableObject {
                 reasoningEffort: reasoningEffort,
                 serviceTier: serviceTier,
                 imageDetail: imageDetail,
-                translationLanguagePair: translationLanguagePair,
+                translationSourceLanguage: translationSourceLanguage,
                 prompt: prompt,
                 screenshot: screenshot,
-                conversationContext: conversationContext
+                conversationContext: conversationContext,
+                onPartialAnswer: { [weak self] partialAnswer in
+                    await self?.receiveStreamedAnswer(partialAnswer)
+                }
             )
             try Task.checkCancellation()
-            let actionSuggestion = await groundedSuggestion(
-                result.actionSuggestion,
-                screenshot: screenshot
-            )
+            let actionSuggestion = mode == .question
+                ? await groundedSuggestion(result.actionSuggestion, screenshot: screenshot)
+                : nil
             try Task.checkCancellation()
             let answer = Self.normalizedAnswerText(result.answer)
+
+            if mode == .visibleSelectionTranslation,
+               let sourceText = result.sourceText?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+               !sourceText.isEmpty {
+                let sourceReadings = JapaneseReadingService.readings(for: sourceText)
+                transcriptMessages.append(
+                    ChatTranscriptMessage(
+                        role: .user,
+                        text: "Selected text: \(sourceText)",
+                        sourceReadings: sourceReadings
+                    )
+                )
+            }
 
             lastResponse = AssistantResponse(
                 text: answer,
@@ -1658,7 +2165,9 @@ final class AppModel: ObservableObject {
                     actionSuggestion: actionSuggestion
                 )
             )
-            statusMessage = "Answer ready."
+            statusMessage = mode == .visibleSelectionTranslation
+                ? "Translation ready."
+                : "Answer ready."
             Self.logger.info("OpenAI answer ready. characters=\(answer.count), hasHighlight=\(actionSuggestion != nil)")
         } catch is CancellationError {
             statusMessage = "Request stopped."
@@ -1673,6 +2182,8 @@ final class AppModel: ObservableObject {
         }
 
         isRequestInFlight = false
+        streamingResponseText = ""
+        cursorProgressOverlayController.hide()
         currentRequestTask = nil
         let shouldActivateAnswerWindow = NSApp.isActive
         answerWindowController.show(appModel: self, activate: shouldActivateAnswerWindow)
@@ -1769,18 +2280,29 @@ final class AppModel: ObservableObject {
             return screenshot
         }
 
+        var mayPresentAutomationPermission = false
         if !defaults.bool(forKey: Self.hasAnsweredSafariPageCapturePrimerKey) {
             guard presentSafariPageCapturePrimer() else { return screenshot }
+            mayPresentAutomationPermission = true
         }
 
         statusMessage = "Reading Safari page..."
+        let windowsHiddenForAutomationPrompt = mayPresentAutomationPermission
+            ? Self.hideVisibleSasuWindowsForCapture()
+            : []
+        defer {
+            Self.restoreWindows(windowsHiddenForAutomationPrompt)
+        }
         do {
             try Task.checkCancellation()
             DiagnosticLogger.log("Attempting Safari page capture. foregroundBundle=\(screenshot.frontmostApplicationBundleIdentifier ?? "unknown") hasVisibleSafariWindow=\(screenshot.hasVisibleSafariWindow)", category: "Safari")
             let pageContext = try safariPageCaptureService.captureCurrentPage()
             try Task.checkCancellation()
             errorMessage = nil
-            DiagnosticLogger.log("Safari page capture ready. title=\(pageContext.displayTitle) characters=\(pageContext.text.count)", category: "Safari")
+            DiagnosticLogger.log(
+                "Safari page capture ready. characters=\(pageContext.text.count)",
+                category: "Safari"
+            )
             return screenshot.addingBrowserPageContext(pageContext)
         } catch is CancellationError {
             return screenshot
@@ -1850,6 +2372,12 @@ final class AppModel: ObservableObject {
             suggestion,
             in: screenshot
         )
+    }
+
+    private func receiveStreamedAnswer(_ partialAnswer: String) {
+        streamingResponseText = partialAnswer
+        statusMessage = "Answering…"
+        cursorProgressOverlayController.update(status: "Answering…")
     }
 
     private func requestUserAttentionIfNeeded() {

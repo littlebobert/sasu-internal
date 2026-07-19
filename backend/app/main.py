@@ -8,6 +8,7 @@ from typing import Optional
 
 import httpx
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -173,19 +174,39 @@ def _validate_model(request_body: dict, settings: Settings) -> None:
 
 async def _proxy_to_openai(request_body: dict, settings: Settings) -> Response:
     _require_openai_key(settings)
-    async with httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0)) as client:
-        upstream = await client.post(
-            OPENAI_RESPONSES_URL,
-            headers={
-                "Authorization": f"Bearer {settings.openai_api_key}",
-                "Content-Type": "application/json",
-            },
-            json=request_body,
+    client = httpx.AsyncClient(timeout=httpx.Timeout(180.0, connect=10.0))
+    upstream_request = client.build_request(
+        "POST",
+        OPENAI_RESPONSES_URL,
+        headers={
+            "Authorization": f"Bearer {settings.openai_api_key}",
+            "Content-Type": "application/json",
+        },
+        json=request_body,
+    )
+    upstream = await client.send(upstream_request, stream=True)
+    content_type = upstream.headers.get("content-type", "application/json")
+
+    if request_body.get("stream") is True and 200 <= upstream.status_code < 300:
+        async def stream_body():
+            try:
+                async for chunk in upstream.aiter_bytes():
+                    yield chunk
+            finally:
+                await upstream.aclose()
+                await client.aclose()
+
+        return StreamingResponse(
+            stream_body(),
+            status_code=upstream.status_code,
+            media_type=content_type,
         )
 
-    content_type = upstream.headers.get("content-type", "application/json")
+    content = await upstream.aread()
+    await upstream.aclose()
+    await client.aclose()
     return Response(
-        content=upstream.content,
+        content=content,
         status_code=upstream.status_code,
         media_type=content_type,
     )

@@ -20,7 +20,7 @@ final class AboutWindowController: NSObject, NSWindowDelegate {
 
     private func makeWindow() -> NSWindow {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 300, height: 245),
+            contentRect: NSRect(x: 0, y: 0, width: 280, height: 215),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
@@ -85,7 +85,7 @@ private struct AboutView: View {
             }
         }
         .padding(10)
-        .frame(width: 300, height: 245)
+        .frame(width: 280, height: 215)
     }
 
     private func reportBug() {

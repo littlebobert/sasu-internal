@@ -56,18 +56,26 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .captureScreen:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Capture",
+                label: "Capture & Ask",
                 symbolNames: ["camera.viewfinder", "rectangle.dashed"],
                 symbolStyle: .accent,
                 action: #selector(captureScreen)
             )
-        case .translateClipboard:
+        case .translateSelection:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Translate Clipboard",
+                label: "Translate Selection",
                 symbolNames: ["translate", "character.book.closed", "textformat"],
                 symbolStyle: .accent,
-                action: #selector(translateClipboard)
+                action: #selector(translateSelection)
+            )
+        case .translateAndReplace:
+            return toolbarItem(
+                identifier: itemIdentifier,
+                label: "Translate & Replace",
+                symbolNames: ["character.cursor.ibeam", "text.cursor"],
+                symbolStyle: .accent,
+                action: #selector(translateAndReplace)
             )
         case .copyAnswer:
             return toolbarItem(
@@ -102,7 +110,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         [
             .flexibleSpace,
             .captureScreen,
-            .translateClipboard,
+            .translateSelection,
+            .translateAndReplace,
             .copyAnswer,
             .clearTranscript,
             .settings
@@ -112,7 +121,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         [
             .captureScreen,
-            .translateClipboard,
+            .translateSelection,
+            .translateAndReplace,
             .copyAnswer,
             .clearTranscript,
             .settings,
@@ -125,7 +135,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         guard let appModel else { return false }
 
         switch item.itemIdentifier {
-        case .captureScreen, .translateClipboard:
+        case .captureScreen, .translateSelection, .translateAndReplace:
             return !appModel.isRequestInFlight && !appModel.isFirstLaunchOnboardingVisible
         case .copyAnswer:
             return appModel.lastResponse != nil
@@ -151,6 +161,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         panel.titlebarAppearsTransparent = true
         panel.level = .floating
         panel.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
+        panel.hidesOnDeactivate = false
         panel.isExcludedFromWindowsMenu = false
         panel.isReleasedWhenClosed = false
         panel.toolbar = makeToolbar()
@@ -162,11 +173,24 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
                 .environmentObject(appModel)
         )
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationActivationChanged(_:)),
+            name: NSApplication.didBecomeActiveNotification,
+            object: NSApp
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationActivationChanged(_:)),
+            name: NSApplication.didResignActiveNotification,
+            object: NSApp
+        )
+
         return panel
     }
 
     private func makeToolbar() -> NSToolbar {
-        let toolbar = NSToolbar(identifier: "SasuTranscriptToolbar")
+        let toolbar = NSToolbar(identifier: "SasuTranscriptToolbarV2")
         toolbar.delegate = self
         toolbar.displayMode = .labelOnly
         toolbar.sizeMode = .regular
@@ -282,8 +306,12 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         appModel?.captureAndAsk()
     }
 
-    @objc private func translateClipboard() {
-        appModel?.translateClipboard()
+    @objc private func translateSelection() {
+        appModel?.translateVisibleSelection()
+    }
+
+    @objc private func translateAndReplace() {
+        appModel?.translateAndReplaceSelection()
     }
 
     @objc private func copyAnswer() {
@@ -298,8 +326,12 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         appModel?.showSettingsWindow()
     }
 
+    @objc private func applicationActivationChanged(_ notification: Notification) {
+        window?.level = currentWindowLevel
+    }
+
     private var currentWindowLevel: NSWindow.Level {
-        isFloatingEnabled ? .floating : .normal
+        isFloatingEnabled && NSApp.isActive ? .floating : .normal
     }
 
     private func initialFrame() -> NSRect {
@@ -316,7 +348,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
 
 private extension NSToolbarItem.Identifier {
     static let captureScreen = NSToolbarItem.Identifier("SasuCaptureScreen")
-    static let translateClipboard = NSToolbarItem.Identifier("SasuTranslateClipboard")
+    static let translateSelection = NSToolbarItem.Identifier("SasuTranslateClipboard")
+    static let translateAndReplace = NSToolbarItem.Identifier("SasuTranslateAndReplace")
     static let copyAnswer = NSToolbarItem.Identifier("SasuCopyAnswer")
     static let clearTranscript = NSToolbarItem.Identifier("SasuClearTranscript")
     static let settings = NSToolbarItem.Identifier("SasuSettings")

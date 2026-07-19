@@ -131,9 +131,13 @@ struct SasuApp: App {
                 .keyboardShortcut("j", modifiers: [.command, .shift])
 
                 Button("Translate Selection") {
-                    appModel.translateSelection()
+                    appModel.translateVisibleSelection()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .shift])
+
+                Button("Translate & Replace") {
+                    appModel.translateAndReplaceSelection()
+                }
             }
         }
     }

@@ -28,10 +28,11 @@ struct OpenAIClient {
         reasoningEffort: String,
         serviceTier: String,
         imageDetail: String,
-        translationLanguagePair: TranslationLanguagePair,
+        translationSourceLanguage: TranslationSourceLanguage,
         prompt: String,
         screenshot: ScreenshotPayload,
-        conversationContext: String?
+        conversationContext: String?,
+        onPartialAnswer: (@Sendable (String) async -> Void)? = nil
     ) async throws -> AssistantResult {
         let uploadImage = try screenshot.uploadImage
         let requestBody = ResponsesRequest(
@@ -43,7 +44,7 @@ struct OpenAIClient {
                         .inputText(try buildPrompt(
                             prompt: prompt,
                             screenshot: screenshot,
-                            translationLanguagePair: translationLanguagePair,
+                            translationSourceLanguage: translationSourceLanguage,
                             conversationContext: conversationContext
                         )),
                         .inputImage(
@@ -54,13 +55,20 @@ struct OpenAIClient {
                 )
             ],
             reasoning: Self.reasoningConfiguration(modelID: modelID, effort: reasoningEffort),
-            serviceTier: Self.serviceTierParameter(serviceTier)
+            serviceTier: Self.serviceTierParameter(serviceTier),
+            stream: true
         )
 
         let text = try await sendResponsesRequest(
             credential: credential,
             requestBody: requestBody,
-            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))"
+            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))",
+            onPartialText: { streamedJSON in
+                guard let partialAnswer = Self.partialAnswer(from: streamedJSON), !partialAnswer.isEmpty else {
+                    return
+                }
+                await onPartialAnswer?(partialAnswer)
+            }
         )
 
         return Self.parseAssistantResult(from: text)
@@ -74,7 +82,8 @@ struct OpenAIClient {
         sourceText: String,
         translationDirection: TranslationDirection = .forUserInterface,
         conversationContext: String?,
-        forSelectionReplacement: Bool = false
+        forSelectionReplacement: Bool = false,
+        onPartialAnswer: (@Sendable (String) async -> Void)? = nil
     ) async throws -> String {
         let requestBody = ResponsesRequest(
             model: modelID,
@@ -92,20 +101,25 @@ struct OpenAIClient {
                 )
             ],
             reasoning: Self.reasoningConfiguration(modelID: modelID, effort: reasoningEffort),
-            serviceTier: Self.serviceTierParameter(serviceTier)
+            serviceTier: Self.serviceTierParameter(serviceTier),
+            stream: true
         )
 
         return try await sendResponsesRequest(
             credential: credential,
             requestBody: requestBody,
-            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)"
+            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)",
+            onPartialText: { text in
+                await onPartialAnswer?(text)
+            }
         )
     }
 
     private func sendResponsesRequest(
         credential: AIRequestCredential,
         requestBody: ResponsesRequest,
-        logSummary: String
+        logSummary: String,
+        onPartialText: (@Sendable (String) async -> Void)?
     ) async throws -> String {
         let requestEndpoint: URL
         let authorizationHeader: String
@@ -129,14 +143,17 @@ struct OpenAIClient {
         request.httpBody = try JSONEncoder().encode(requestBody)
         Self.logger.info("Sending AI request via \(destination, privacy: .public). \(logSummary, privacy: .public), bodyBytes=\(request.httpBody?.count ?? 0)")
 
-        let (data, response) = try await session.data(for: request)
+        let (bytes, response) = try await session.bytes(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw OpenAIError.invalidResponse
         }
-        Self.logger.info("AI response received. destination=\(destination, privacy: .public), status=\(httpResponse.statusCode), bytes=\(data.count)")
 
         let decoder = JSONDecoder()
         if !(200..<300).contains(httpResponse.statusCode) {
+            var data = Data()
+            for try await byte in bytes {
+                data.append(byte)
+            }
             if let errorResponse = try? decoder.decode(OpenAIErrorResponse.self, from: data) {
                 throw OpenAIError.apiError(statusCode: httpResponse.statusCode, message: errorResponse.error.message)
             }
@@ -148,34 +165,164 @@ struct OpenAIClient {
             throw OpenAIError.httpStatus(httpResponse.statusCode, bodyPreview: bodyPreview)
         }
 
-        let responseBody: ResponsesResponse
-        do {
-            responseBody = try decoder.decode(ResponsesResponse.self, from: data)
-        } catch {
-            let bodyPreview = String(data: data, encoding: .utf8)
-            Self.logger.error("Could not decode OpenAI response: \(error.localizedDescription, privacy: .public)")
-            throw OpenAIError.decodingFailed(error.localizedDescription, bodyPreview: bodyPreview)
+        var text = ""
+        var receivedEventCount = 0
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard line.hasPrefix("data:") else { continue }
+            let payload = line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+            guard !payload.isEmpty, payload != "[DONE]", let data = payload.data(using: .utf8) else {
+                continue
+            }
+
+            let event: ResponsesStreamEvent
+            do {
+                event = try decoder.decode(ResponsesStreamEvent.self, from: data)
+            } catch {
+                continue
+            }
+
+            receivedEventCount += 1
+            if event.type == "response.output_text.delta", let delta = event.delta {
+                text += delta
+                await onPartialText?(text)
+            } else if event.type == "error", let message = event.message {
+                throw OpenAIError.apiError(statusCode: httpResponse.statusCode, message: message)
+            }
         }
 
-        let outputText = responseBody.outputText?.trimmingCharacters(in: .whitespacesAndNewlines)
-        let collectedText = responseBody.outputItems
-            .flatMap(\.content)
-            .compactMap(\.text)
-            .joined(separator: "\n")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let text = outputText?.isEmpty == false ? outputText! : collectedText
-
+        text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
             throw OpenAIError.emptyOutput
         }
 
+        Self.logger.info("AI stream completed. destination=\(destination, privacy: .public), status=\(httpResponse.statusCode), events=\(receivedEventCount), characters=\(text.count)")
         return text
+    }
+
+    static func partialAnswer(from streamedJSON: String) -> String? {
+        partialStringValue(forKey: "answer", from: streamedJSON)
+    }
+
+    private static func partialStringValue(
+        forKey key: String,
+        from streamedJSON: String
+    ) -> String? {
+        guard let keyRange = streamedJSON.range(of: "\"\(key)\"") else { return nil }
+        var index = keyRange.upperBound
+
+        while index < streamedJSON.endIndex, streamedJSON[index].isWhitespace {
+            index = streamedJSON.index(after: index)
+        }
+        guard index < streamedJSON.endIndex, streamedJSON[index] == ":" else { return nil }
+        index = streamedJSON.index(after: index)
+        while index < streamedJSON.endIndex, streamedJSON[index].isWhitespace {
+            index = streamedJSON.index(after: index)
+        }
+        guard index < streamedJSON.endIndex, streamedJSON[index] == "\"" else { return nil }
+        index = streamedJSON.index(after: index)
+
+        var answer = ""
+        while index < streamedJSON.endIndex {
+            let character = streamedJSON[index]
+            if character == "\"" {
+                break
+            }
+            guard character == "\\" else {
+                answer.append(character)
+                index = streamedJSON.index(after: index)
+                continue
+            }
+
+            let escapeIndex = streamedJSON.index(after: index)
+            guard escapeIndex < streamedJSON.endIndex else { break }
+            let escapedCharacter = streamedJSON[escapeIndex]
+            switch escapedCharacter {
+            case "\"", "\\", "/":
+                answer.append(escapedCharacter)
+                index = streamedJSON.index(after: escapeIndex)
+            case "n":
+                answer.append("\n")
+                index = streamedJSON.index(after: escapeIndex)
+            case "r":
+                answer.append("\r")
+                index = streamedJSON.index(after: escapeIndex)
+            case "t":
+                answer.append("\t")
+                index = streamedJSON.index(after: escapeIndex)
+            case "b":
+                answer.append("\u{8}")
+                index = streamedJSON.index(after: escapeIndex)
+            case "f":
+                answer.append("\u{c}")
+                index = streamedJSON.index(after: escapeIndex)
+            case "u":
+                let hexStart = streamedJSON.index(after: escapeIndex)
+                guard let (scalar, nextIndex) = Self.unicodeScalar(
+                    in: streamedJSON,
+                    hexStart: hexStart
+                ) else {
+                    return answer
+                }
+                answer.unicodeScalars.append(scalar)
+                index = nextIndex
+            default:
+                index = streamedJSON.index(after: escapeIndex)
+            }
+        }
+
+        return answer
+    }
+
+    static func recoveredAnswer(from structuredText: String) -> String? {
+        recoveredStringValue(forKey: "answer", from: structuredText)
+    }
+
+    static func recoveredSourceText(from structuredText: String) -> String? {
+        recoveredStringValue(forKey: "sourceText", from: structuredText)
+    }
+
+    private static func recoveredStringValue(
+        forKey key: String,
+        from structuredText: String
+    ) -> String? {
+        let normalizedQuotes = structuredText
+            .replacingOccurrences(of: "\u{201c}", with: "\"")
+            .replacingOccurrences(of: "\u{201d}", with: "\"")
+
+        guard let value = partialStringValue(forKey: key, from: normalizedQuotes)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !value.isEmpty
+        else {
+            return nil
+        }
+
+        return value
+    }
+
+    private static func unicodeScalar(
+        in text: String,
+        hexStart: String.Index
+    ) -> (UnicodeScalar, String.Index)? {
+        var hexEnd = hexStart
+        for _ in 0..<4 {
+            guard hexEnd < text.endIndex else { return nil }
+            hexEnd = text.index(after: hexEnd)
+        }
+
+        guard let value = UInt32(text[hexStart..<hexEnd], radix: 16),
+              let scalar = UnicodeScalar(value),
+              !(0xD800...0xDFFF).contains(value)
+        else {
+            return nil
+        }
+        return (scalar, hexEnd)
     }
 
     private func buildPrompt(
         prompt: String,
         screenshot: ScreenshotPayload,
-        translationLanguagePair: TranslationLanguagePair,
+        translationSourceLanguage: TranslationSourceLanguage,
         conversationContext: String?
     ) throws -> String {
         let uploadImage = try screenshot.uploadImage
@@ -196,8 +343,9 @@ struct OpenAIClient {
             Return a JSON object only, with this shape:
             {
               "answer": "Markdown answer for the user",
+              "sourceText": "exact visibly selected source text for a selection-translation request, otherwise null",
               "actionSuggestion": {
-                "label": "short target label",
+                "label": "concise, complete instruction for the on-screen callout",
                 "exactText": "exact visible text on screen for this target, or null",
                 "shape": "rectangle",
                 "x": 0,
@@ -210,13 +358,17 @@ struct OpenAIClient {
 
             The actionSuggestion is optional. Include it only when the user is asking where to click, what to do next, how to fill something out, or how to navigate a visible UI. Use uploaded image pixel coordinates from the top-left corner. Prefer forgiving rectangles around a target, not tiny click points. If no visual target is useful, set actionSuggestion to null.
 
+            For sourceText, copy only the exact text that is visibly selected or highlighted when the user asks to translate a selection. Preserve its original characters and line breaks. For other requests, set sourceText to null.
+
+            For actionSuggestion.label, give the complete next-step instruction, not merely the highlighted button's name. If the user must type, select, check, upload, or otherwise do something before pressing the highlighted control, include those prerequisite actions in order and end with the control action. For example: `Enter your domain name, then click Next.` Keep it concise enough for a callout, but never omit a required prerequisite just to shorten it.
+
             For actionSuggestion.exactText, copy the exact visible on-screen text that identifies the target, in the original UI language, such as `ネームサーバー/DNS`. Use null if the target has no visible text (icon-only buttons, toolbar glyphs, etc.). This text is used for local OCR grounding, so do not translate, paraphrase, or describe it. Never put the descriptive label (such as "Back arrow") in exactText.
 
             For icon-only targets (exactText is null), place the rectangle tightly around the specific icon only. In toolbars with multiple similar icons, use nearby labeled controls as anchors and double-check you selected the correct icon. Prefer shape "circle" for compact icon buttons. Put disambiguation details in reason when needed.
 
             \(TranslationDirection.screenshotLanguageBehaviorInstructions(
                 for: Locale.preferredLanguages,
-                languagePair: translationLanguagePair
+                sourceLanguage: translationSourceLanguage
             ))
 
             Format the answer field as clear Markdown.
@@ -272,9 +424,8 @@ struct OpenAIClient {
         forSelectionReplacement: Bool
     ) -> String {
         var instructions = [
-            "- If the source text is primarily in \(direction.expectedSourceLanguage), translate it into natural \(direction.targetLanguage).",
-            "- If the source text is primarily in \(direction.targetLanguage), translate it into natural \(direction.expectedSourceLanguage) instead.",
-            "- For text mixing \(direction.expectedSourceLanguage) and \(direction.targetLanguage), translate into the language opposite the source text's primary language.",
+            "- Translate the source text from \(direction.expectedSourceLanguage) into natural \(direction.targetLanguage).",
+            "- For mixed-language text, translate the \(direction.expectedSourceLanguage) content into \(direction.targetLanguage) and preserve names or phrases that should remain unchanged.",
             "- Do not return the source text unchanged unless it contains no translatable language.",
             "- Preserve the speaker's tone, intent, names, URLs, emoji, and formatting where helpful."
         ]
@@ -341,7 +492,17 @@ struct OpenAIClient {
            let envelope = try? decoder.decode(AssistantResultEnvelope.self, from: data) {
             return AssistantResult(
                 answer: envelope.answer.trimmingCharacters(in: .whitespacesAndNewlines),
-                actionSuggestion: envelope.actionSuggestion
+                actionSuggestion: envelope.actionSuggestion,
+                sourceText: envelope.sourceText?
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+        }
+
+        if let recoveredAnswer = recoveredAnswer(from: candidateJSON) {
+            return AssistantResult(
+                answer: recoveredAnswer,
+                actionSuggestion: nil,
+                sourceText: recoveredSourceText(from: candidateJSON)
             )
         }
 
@@ -365,6 +526,7 @@ struct OpenAIClient {
 private struct AssistantResultEnvelope: Decodable {
     let answer: String
     let actionSuggestion: HighlightSuggestion?
+    let sourceText: String?
 }
 
 private struct ResponsesRequest: Encodable {
@@ -372,13 +534,21 @@ private struct ResponsesRequest: Encodable {
     let input: [ResponsesInput]
     let reasoning: ReasoningConfiguration?
     let serviceTier: String?
+    let stream: Bool
 
     private enum CodingKeys: String, CodingKey {
         case model
         case input
         case reasoning
         case serviceTier = "service_tier"
+        case stream
     }
+}
+
+private struct ResponsesStreamEvent: Decodable {
+    let type: String
+    let delta: String?
+    let message: String?
 }
 
 private struct ReasoningConfiguration: Encodable {

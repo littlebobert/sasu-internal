@@ -5,14 +5,17 @@ final class CursorProgressOverlayController {
     private var panel: NSPanel?
     private var trackingTimer: Timer?
 
-    private let panelSize = NSSize(width: 22, height: 22)
+    private var panelSize = NSSize(width: 110, height: 32)
     private let cursorOffset = NSPoint(x: 16, y: -18)
+    private let statusFont = NSFont.systemFont(ofSize: 13, weight: .medium)
 
-    func show() {
+    func show(status: String = "Working…") {
         if panel == nil {
             panel = makePanel()
         }
 
+        resizePanel(toFit: status)
+        (panel?.contentView as? CursorProgressContentView)?.update(status: status)
         updatePosition()
         panel?.alphaValue = 0
         panel?.orderFrontRegardless()
@@ -23,6 +26,12 @@ final class CursorProgressOverlayController {
         }
 
         startTracking()
+    }
+
+    func update(status: String) {
+        resizePanel(toFit: status)
+        (panel?.contentView as? CursorProgressContentView)?.update(status: status)
+        updatePosition()
     }
 
     func hide() {
@@ -90,10 +99,23 @@ final class CursorProgressOverlayController {
 
         panel?.setFrame(frame, display: true)
     }
+
+    private func resizePanel(toFit status: String) {
+        let textWidth = ceil(
+            (status as NSString).size(withAttributes: [.font: statusFont]).width
+        )
+        panelSize.width = min(max(textWidth + 42, 88), 260)
+
+        guard let panel else { return }
+        var frame = panel.frame
+        frame.size = panelSize
+        panel.setFrame(frame, display: true)
+    }
 }
 
 private final class CursorProgressContentView: NSView {
     private let spinner = NSProgressIndicator()
+    private let statusLabel = NSTextField(labelWithString: "")
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
@@ -107,12 +129,33 @@ private final class CursorProgressContentView: NSView {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         addSubview(spinner)
 
+        statusLabel.font = .systemFont(ofSize: 13, weight: .medium)
+        statusLabel.textColor = .labelColor
+        statusLabel.lineBreakMode = .byTruncatingTail
+        statusLabel.translatesAutoresizingMaskIntoConstraints = false
+        addSubview(statusLabel)
+
         NSLayoutConstraint.activate([
-            spinner.centerXAnchor.constraint(equalTo: centerXAnchor),
-            spinner.centerYAnchor.constraint(equalTo: centerYAnchor)
+            spinner.leadingAnchor.constraint(equalTo: leadingAnchor, constant: 8),
+            spinner.centerYAnchor.constraint(equalTo: centerYAnchor),
+            statusLabel.leadingAnchor.constraint(equalTo: spinner.trailingAnchor, constant: 6),
+            statusLabel.trailingAnchor.constraint(equalTo: trailingAnchor, constant: -8),
+            statusLabel.centerYAnchor.constraint(equalTo: centerYAnchor)
         ])
 
+        layer?.backgroundColor = NSColor.windowBackgroundColor.withAlphaComponent(0.94).cgColor
+        layer?.cornerRadius = 10
+        layer?.borderWidth = 1
+        layer?.borderColor = NSColor.separatorColor.withAlphaComponent(0.6).cgColor
+        layer?.shadowColor = NSColor.black.cgColor
+        layer?.shadowOpacity = 0.18
+        layer?.shadowRadius = 6
+        layer?.shadowOffset = CGSize(width: 0, height: -2)
         spinner.startAnimation(nil)
+    }
+
+    func update(status: String) {
+        statusLabel.stringValue = status
     }
 
     @available(*, unavailable)

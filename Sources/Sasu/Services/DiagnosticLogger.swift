@@ -27,7 +27,8 @@ enum DiagnosticLogger {
     }
 
     static func log(_ message: String, category: String = "App") {
-        let line = "\(Self.timestamp()) [\(category)] \(message)\n"
+        let safeMessage = sanitizedMessageForBugReport(message)
+        let line = "\(Self.timestamp()) [\(category)] \(safeMessage)\n"
         queue.async {
             do {
                 let fileURL = try logFileURL
@@ -67,7 +68,7 @@ enum DiagnosticLogger {
         let appcastURL = bundle.object(forInfoDictionaryKey: "SUFeedURL") as? String ?? "unknown"
         let bundleID = bundle.bundleIdentifier ?? "unknown"
         let fullLogText = (try? String(contentsOf: logFileURL, encoding: .utf8)) ?? "No diagnostic log found."
-        let logText = recentLogText(from: fullLogText)
+        let logText = recentLogText(from: sanitizedLogTextForBugReport(fullLogText))
 
         return """
         Sasu Bug Report
@@ -105,6 +106,53 @@ enum DiagnosticLogger {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: Date())
+    }
+
+    static func sanitizedLogTextForBugReport(_ fullLogText: String) -> String {
+        fullLogText
+            .split(separator: "\n", omittingEmptySubsequences: true)
+            .compactMap { rawLine -> String? in
+                let line = String(rawLine)
+
+                // A diagnostic entry must begin with its own timestamp. Dropping
+                // continuation lines also removes response bodies written by
+                // older versions of Sasu as multi-line error descriptions.
+                guard let messageRange = line.range(
+                    of: #"^\d{4}-\d{2}-\d{2}T\S+ \[[^\]]+\] "#,
+                    options: .regularExpression
+                ) else {
+                    return nil
+                }
+
+                let prefix = String(line[messageRange])
+                let message = String(line[messageRange.upperBound...])
+                return prefix + sanitizedMessageForBugReport(message)
+            }
+            .joined(separator: "\n")
+    }
+
+    private static func sanitizedMessageForBugReport(_ message: String) -> String {
+        let singleLine = message
+            .replacingOccurrences(of: "\r", with: " ")
+            .replacingOccurrences(of: "\n", with: " ")
+
+        let contentMarkers = [
+            "prompt=",
+            "question=",
+            "sourceText=",
+            "answer=",
+            "translation=",
+            "clipboard text:",
+            "response body:",
+            "page text=",
+            "title="
+        ]
+        let lowercased = singleLine.lowercased()
+        guard !contentMarkers.contains(where: { lowercased.contains($0.lowercased()) }) else {
+            return "Request content redacted for privacy."
+        }
+
+        return singleLine
     }
 
     private static func recentLogText(from fullLogText: String) -> String {

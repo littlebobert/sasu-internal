@@ -27,23 +27,26 @@ struct SelectionAutomationService {
         pasteboard.clearContents()
         pasteboard.setString(sentinel, forType: .string)
 
-        try postCommandKey(keyCode: CGKeyCode(kVK_ANSI_C))
+        do {
+            try postCommandKey(keyCode: CGKeyCode(kVK_ANSI_C))
 
-        try await Task.sleep(nanoseconds: clipboardCopyDelayNanoseconds)
+            try await Task.sleep(nanoseconds: clipboardCopyDelayNanoseconds)
 
-        guard let copiedText = pasteboard.string(forType: .string),
-              copiedText != sentinel else {
+            guard let copiedText = pasteboard.string(forType: .string),
+                  copiedText != sentinel else {
+                throw SelectionAutomationError.noSelection
+            }
+
+            let trimmedText = copiedText.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmedText.isEmpty else {
+                throw SelectionAutomationError.emptySelection
+            }
+
+            return (copiedText, backup)
+        } catch {
             backup.restore(to: pasteboard)
-            throw SelectionAutomationError.noSelection
+            throw error
         }
-
-        let trimmedText = copiedText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedText.isEmpty else {
-            backup.restore(to: pasteboard)
-            throw SelectionAutomationError.emptySelection
-        }
-
-        return (copiedText, backup)
     }
 
     func pasteTranslation(
@@ -77,6 +80,7 @@ struct SelectionAutomationService {
         keyDown.post(tap: .cgAnnotatedSessionEventTap)
         keyUp.post(tap: .cgAnnotatedSessionEventTap)
     }
+
 }
 
 enum SelectionAutomationError: LocalizedError {
@@ -90,9 +94,9 @@ enum SelectionAutomationError: LocalizedError {
         case .accessibilityRequired:
             return "Enable Sasu in System Settings > Privacy & Security > Accessibility to translate selected text in other apps."
         case .noSelection:
-            return "No text was selected. Select text in the app you are editing, then press the Translate Selection hotkey again."
+            return "No text was selected. Select text in the app you are editing, then choose Translate & Replace again."
         case .emptySelection:
-            return "The selected text is empty. Select text to translate, then press the Translate Selection hotkey again."
+            return "The selected text is empty. Select text to translate, then choose Translate & Replace again."
         case .eventCreationFailed:
             return "Sasu could not send the copy or paste command."
         }

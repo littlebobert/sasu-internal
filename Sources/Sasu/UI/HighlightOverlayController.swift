@@ -30,8 +30,14 @@ final class HighlightOverlayController {
         panel?.orderFrontRegardless()
     }
 
-    func hide() {
+    func hide(immediately: Bool = false) {
         guard let panel, panel.isVisible else { return }
+
+        if immediately {
+            panel.orderOut(nil)
+            panel.alphaValue = 1
+            return
+        }
 
         NSAnimationContext.runAnimationGroup { context in
             context.duration = 0.35
@@ -117,29 +123,46 @@ private struct HighlightOverlayView: View {
         Text(highlight.label)
             .font(.headline)
             .foregroundStyle(.white)
-            .lineLimit(1)
+            .multilineTextAlignment(.center)
+            .lineLimit(3)
             .truncationMode(.tail)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(Color.blue)
             .clipShape(RoundedRectangle(cornerRadius: 8))
-            .frame(maxWidth: max(120, highlight.screenSize.width - 32))
+            .frame(maxWidth: labelMaximumWidth)
             .position(labelPosition)
     }
 
     private var labelPosition: CGPoint {
-        let estimatedLabelWidth = min(max(CGFloat(highlight.label.count) * 10 + 20, 80), highlight.screenSize.width - 32)
+        let estimatedLabelWidth = min(
+            max(CGFloat(highlight.label.count) * 9 + 20, 120),
+            labelMaximumWidth
+        )
         let halfLabelWidth = estimatedLabelWidth / 2
+        let estimatedLineCount = min(
+            3,
+            max(1, ceil((CGFloat(highlight.label.count) * 9 + 20) / labelMaximumWidth))
+        )
+        let estimatedLabelHeight = 30 + ((estimatedLineCount - 1) * 20)
+        let halfLabelHeight = estimatedLabelHeight / 2
         let x = min(
             max(highlight.rect.midX, halfLabelWidth + 16),
             highlight.screenSize.width - halfLabelWidth - 16
         )
-        let preferredY = highlight.rect.minY - 22
-        let y = preferredY >= 24
+        let preferredY = highlight.rect.minY - halfLabelHeight - 8
+        let y = preferredY >= halfLabelHeight + 8
             ? preferredY
-            : min(highlight.rect.maxY + 22, highlight.screenSize.height - 24)
+            : min(
+                highlight.rect.maxY + halfLabelHeight + 8,
+                highlight.screenSize.height - halfLabelHeight - 8
+            )
 
         return CGPoint(x: x, y: y)
+    }
+
+    private var labelMaximumWidth: CGFloat {
+        min(440, max(120, highlight.screenSize.width - 32))
     }
 }
 
