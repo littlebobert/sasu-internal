@@ -606,8 +606,11 @@ final class AppModel: ObservableObject {
     func closeUnmanagedSettingsWindows() {
         NSApp.windows
             .filter { window in
-                window.identifier?.rawValue == "SasuSettingsWindow"
-                    && !settingsWindowController.owns(window)
+                guard !settingsWindowController.owns(window) else { return false }
+
+                let identifier = window.identifier?.rawValue.lowercased() ?? ""
+                return window.title == String(localized: "Sasu Settings")
+                    || identifier.contains("settings")
             }
             .forEach { window in
                 window.close()
