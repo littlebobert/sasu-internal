@@ -10,7 +10,7 @@ struct ModelPreset: Identifiable, Equatable {
 
     static let gpt56HighFast = ModelPreset(
         id: "gpt56HighFast",
-        label: "Best (GPT-5.6 High Fast)",
+        label: String(localized: "Best (GPT-5.6 High Fast)"),
         modelID: "gpt-5.6",
         reasoningEffort: "high",
         serviceTier: "priority",
@@ -19,7 +19,7 @@ struct ModelPreset: Identifiable, Equatable {
 
     static let gpt56MediumFast = ModelPreset(
         id: "gpt56MediumFast",
-        label: "Better (GPT-5.6 Medium Fast)",
+        label: String(localized: "Better (GPT-5.6 Medium Fast)"),
         modelID: "gpt-5.6",
         reasoningEffort: "medium",
         serviceTier: "priority",

@@ -33,7 +33,7 @@ final class ScreenshotPreviewWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Screenshot Preview"
+        window.title = String(localized: "Screenshot Preview")
         window.level = .floating + 1
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         window.isReleasedWhenClosed = false

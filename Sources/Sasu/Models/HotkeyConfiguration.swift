@@ -29,21 +29,21 @@ struct HotkeyConfiguration: Equatable {
         defaultTranslateAndReplaceConfiguration
 
     static let supportedKeys: [HotkeyKey] = [
-        HotkeyKey(name: "Space", keyCode: UInt32(kVK_Space)),
-        HotkeyKey(name: "Return", keyCode: UInt32(kVK_Return)),
+        HotkeyKey(name: String(localized: "Space"), keyCode: UInt32(kVK_Space)),
+        HotkeyKey(name: String(localized: "Return"), keyCode: UInt32(kVK_Return)),
         HotkeyKey(name: "K", keyCode: UInt32(kVK_ANSI_K)),
         HotkeyKey(name: "J", keyCode: UInt32(kVK_ANSI_J)),
         HotkeyKey(name: "T", keyCode: UInt32(kVK_ANSI_T)),
         HotkeyKey(name: "S", keyCode: UInt32(kVK_ANSI_S)),
-        HotkeyKey(name: "Slash", keyCode: UInt32(kVK_ANSI_Slash))
+        HotkeyKey(name: String(localized: "Slash"), keyCode: UInt32(kVK_ANSI_Slash))
     ]
 
     var displayName: String {
         let modifierNames = [
-            (UInt32(controlKey), "Control"),
-            (UInt32(optionKey), "Option"),
-            (UInt32(shiftKey), "Shift"),
-            (UInt32(cmdKey), "Command")
+            (UInt32(controlKey), String(localized: "Control")),
+            (UInt32(optionKey), String(localized: "Option")),
+            (UInt32(shiftKey), String(localized: "Shift")),
+            (UInt32(cmdKey), String(localized: "Command"))
         ]
             .filter { modifiers & $0.0 != 0 }
             .map { $0.1 }
@@ -52,7 +52,8 @@ struct HotkeyConfiguration: Equatable {
     }
 
     static func keyName(for keyCode: UInt32) -> String {
-        supportedKeys.first { $0.keyCode == keyCode }?.name ?? "Key \(keyCode)"
+        supportedKeys.first { $0.keyCode == keyCode }?.name
+            ?? String(localized: "Key \(keyCode)")
     }
 }
 

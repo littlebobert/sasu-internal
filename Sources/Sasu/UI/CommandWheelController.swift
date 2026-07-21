@@ -7,7 +7,7 @@ enum SasuCommand: CaseIterable {
     case translateSelection
     case translateAndReplace
 
-    var title: String {
+    var title: LocalizedStringResource {
         switch self {
         case .captureAndAsk:
             return "Capture & Ask"

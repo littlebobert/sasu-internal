@@ -112,7 +112,7 @@ struct SettingsView: View {
                 let direction = TranslationDirection.forUserInterface(
                     sourceLanguage: appModel.translationSourceLanguage
                 )
-                Text("Reads \(direction.expectedSourceLanguage) into \(direction.targetLanguage). Editable selections translate in the reverse direction so you can replace text you are writing.")
+                Text("Reads \(direction.localizedExpectedSourceLanguage) into \(direction.localizedTargetLanguage). Editable selections translate in the reverse direction so you can replace text you are writing.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -128,7 +128,7 @@ struct SettingsView: View {
             VStack(alignment: .leading, spacing: 12) {
                 Picker("Use", selection: $appModel.accessMode) {
                     ForEach(AccessMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+                        Text(accessModeTitle(mode)).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -145,6 +145,15 @@ struct SettingsView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func accessModeTitle(_ mode: AccessMode) -> LocalizedStringResource {
+        switch mode {
+        case .invite:
+            return "Invite access"
+        case .apiKey:
+            return "My OpenAI API key"
+        }
     }
 
     private var inviteAccessControls: some View {
@@ -188,10 +197,10 @@ struct SettingsView: View {
 
     private var inviteAccessStatus: String {
         guard appModel.hasStoredBackendAccessToken else {
-            return "No invite access saved"
+            return String(localized: "No invite access saved")
         }
 
-        return "Invite access saved in Keychain"
+        return String(localized: "Invite access saved in Keychain")
     }
 
     private var canRedeemInvite: Bool {
@@ -204,8 +213,12 @@ struct SettingsView: View {
                 Circle()
                     .fill(appModel.hasStoredAPIKey ? Color.green : Color.orange)
                     .frame(width: 10, height: 10)
-                Text(appModel.hasStoredAPIKey ? "API key saved in Keychain" : "No API key saved")
-                    .foregroundStyle(.secondary)
+                Text(
+                    appModel.hasStoredAPIKey
+                        ? LocalizedStringResource("API key saved in Keychain")
+                        : LocalizedStringResource("No API key saved")
+                )
+                .foregroundStyle(.secondary)
             }
 
             SecureField(apiKeyPlaceholder, text: $appModel.apiKeyInput)
@@ -233,7 +246,9 @@ struct SettingsView: View {
     }
 
     private var apiKeyPlaceholder: String {
-        appModel.storedAPIKeyPreview.isEmpty ? "sk-..." : appModel.storedAPIKeyPreview
+        appModel.storedAPIKeyPreview.isEmpty
+            ? String(localized: "sk-...")
+            : appModel.storedAPIKeyPreview
     }
 
     private var canSaveAPIKey: Bool {
@@ -450,8 +465,12 @@ struct SettingsView: View {
                         Circle()
                             .fill(appModel.hasAccessibilityAccess ? Color.green : Color.orange)
                             .frame(width: 10, height: 10)
-                        Text(appModel.hasAccessibilityAccess ? "Accessibility permission granted" : "Accessibility permission required")
-                            .foregroundStyle(.secondary)
+                        Text(
+                            appModel.hasAccessibilityAccess
+                                ? LocalizedStringResource("Accessibility permission granted")
+                                : LocalizedStringResource("Accessibility permission required")
+                        )
+                        .foregroundStyle(.secondary)
                     }
 
                     HStack {
@@ -492,7 +511,7 @@ struct SettingsView: View {
     }
 
     private func modifierToggle(
-        _ title: String,
+        _ title: LocalizedStringResource,
         isEnabled: @escaping () -> Bool,
         setEnabled: @escaping (Bool) -> Void
     ) -> some View {
@@ -592,7 +611,7 @@ struct SettingsView: View {
     }
 
     private func settingsGroup<Content: View>(
-        _ title: String,
+        _ title: LocalizedStringResource,
         @ViewBuilder content: () -> Content
     ) -> some View {
         GroupBox {

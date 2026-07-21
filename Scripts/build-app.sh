@@ -11,6 +11,9 @@ RESOURCES_DIR="$CONTENTS_DIR/Resources"
 FRAMEWORKS_DIR="$CONTENTS_DIR/Frameworks"
 SPARKLE_FRAMEWORK="$ROOT_DIR/.build/artifacts/sparkle/Sparkle/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework"
 ENTITLEMENTS="$ROOT_DIR/AppBundle/Sasu.entitlements"
+LOCALIZABLE_STRINGS_CATALOG="$ROOT_DIR/AppBundle/Localization/Localizable.xcstrings"
+INFO_PLIST_STRINGS_CATALOG="$ROOT_DIR/AppBundle/Localization/InfoPlist.xcstrings"
+LOCALIZATIONS=(en ja zh-Hans zh-Hant)
 CODESIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
 
 cd "$ROOT_DIR"
@@ -24,6 +27,43 @@ cp "$ROOT_DIR/AppBundle/Info.plist" "$CONTENTS_DIR/Info.plist"
 if [[ -d "$ROOT_DIR/AppBundle/Resources" ]]; then
   cp -R "$ROOT_DIR/AppBundle/Resources/." "$RESOURCES_DIR/"
 fi
+for catalog in "$LOCALIZABLE_STRINGS_CATALOG" "$INFO_PLIST_STRINGS_CATALOG"; do
+  if [[ ! -f "$catalog" ]]; then
+    echo "error: strings catalog not found at $catalog" >&2
+    exit 1
+  fi
+done
+if ! xcrun --find xcstringstool >/dev/null 2>&1; then
+  echo "error: xcstringstool is unavailable; install or select a current Xcode toolchain." >&2
+  exit 1
+fi
+xcrun xcstringstool compile "$LOCALIZABLE_STRINGS_CATALOG" \
+  --output-directory "$RESOURCES_DIR" \
+  --language en \
+  --language ja \
+  --language zh-Hans \
+  --language zh-Hant
+xcrun xcstringstool compile "$INFO_PLIST_STRINGS_CATALOG" \
+  --output-directory "$RESOURCES_DIR" \
+  --language en \
+  --language ja \
+  --language zh-Hans \
+  --language zh-Hant
+for localization in "${LOCALIZATIONS[@]}"; do
+  localized_info_plist="$RESOURCES_DIR/$localization.lproj/InfoPlist.strings"
+  if [[ ! -s "$localized_info_plist" ]]; then
+    echo "error: localized strings output was not created: $localized_info_plist" >&2
+    exit 1
+  fi
+
+done
+for localization in ja zh-Hans zh-Hant; do
+  localized_strings="$RESOURCES_DIR/$localization.lproj/Localizable.strings"
+  if [[ ! -s "$localized_strings" ]]; then
+    echo "error: localized strings output was not created: $localized_strings" >&2
+    exit 1
+  fi
+done
 cp "$ROOT_DIR/.build/$CONFIGURATION/$APP_NAME" "$MACOS_DIR/$APP_NAME"
 chmod +x "$MACOS_DIR/$APP_NAME"
 if [[ ! -d "$SPARKLE_FRAMEWORK" ]]; then

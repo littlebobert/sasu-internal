@@ -1,0 +1,64 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSAccessibilityUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasu needs Accessibility access to copy selected text and paste translations back into other apps."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasuは、選択したテキストをコピーし、翻訳をほかのアプリに貼り付けるためにアクセシビリティへのアクセスが必要です。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasu 需要“辅助功能”权限，才能复制所选文本并将翻译粘贴回其他 App。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasu 需要「輔助使用」權限，才能複製所選文字並將翻譯貼回其他 App。"
+          }
+        }
+      }
+    },
+    "NSAppleEventsUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasu asks Safari for the active tab title, URL, and page text only when you capture Safari so it can explain the full page."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sasuは、Safariをキャプチャしたときにのみ、ページ全体を説明するため、アクティブなタブのタイトル、URL、ページ内のテキストをSafariに要求します。"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当您捕捉 Safari 时，Sasu 才会向 Safari 请求当前标签页的标题、URL 和页面文本，以便说明整个页面。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有在您擷取 Safari 時，Sasu 才會向 Safari 要求目前分頁的標題、URL 和頁面文字，以便說明整個頁面。"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

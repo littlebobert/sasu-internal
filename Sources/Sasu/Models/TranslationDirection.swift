@@ -11,6 +11,19 @@ enum TranslationSourceLanguage: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .japanese:
+            return String(localized: "Japanese")
+        case .english:
+            return String(localized: "English")
+        case .simplifiedChinese:
+            return String(localized: "Simplified Chinese")
+        case .traditionalChinese:
+            return String(localized: "Traditional Chinese")
+        }
+    }
+
+    var promptLanguageName: String {
+        switch self {
+        case .japanese:
             return "Japanese"
         case .english:
             return "English"
@@ -20,16 +33,22 @@ enum TranslationSourceLanguage: String, CaseIterable, Identifiable {
             return "Traditional Chinese"
         }
     }
-
-    var languageName: String { label }
 }
 
 struct TranslationDirection {
     let targetLanguage: String
     let expectedSourceLanguage: String
 
+    var localizedTargetLanguage: String {
+        Self.localizedLanguageName(for: targetLanguage)
+    }
+
+    var localizedExpectedSourceLanguage: String {
+        Self.localizedLanguageName(for: expectedSourceLanguage)
+    }
+
     static var prefersJapaneseInterface: Bool {
-        prefersJapaneseInterface(for: Locale.preferredLanguages)
+        prefersJapaneseInterface(for: preferredUserInterfaceLanguages)
     }
 
     static func prefersJapaneseInterface(for preferredLanguages: [String]) -> Bool {
@@ -37,7 +56,7 @@ struct TranslationDirection {
     }
 
     static var prefersTraditionalChineseInterface: Bool {
-        prefersTraditionalChineseInterface(for: Locale.preferredLanguages)
+        prefersTraditionalChineseInterface(for: preferredUserInterfaceLanguages)
     }
 
     static func prefersTraditionalChineseInterface(for preferredLanguages: [String]) -> Bool {
@@ -55,7 +74,7 @@ struct TranslationDirection {
     }
 
     static var prefersSimplifiedChineseInterface: Bool {
-        prefersSimplifiedChineseInterface(for: Locale.preferredLanguages)
+        prefersSimplifiedChineseInterface(for: preferredUserInterfaceLanguages)
     }
 
     static func prefersSimplifiedChineseInterface(for preferredLanguages: [String]) -> Bool {
@@ -71,11 +90,11 @@ struct TranslationDirection {
     }
 
     static var forUserInterface: TranslationDirection {
-        forPreferredLanguages(Locale.preferredLanguages, sourceLanguage: .japanese)
+        forPreferredLanguages(preferredUserInterfaceLanguages, sourceLanguage: .japanese)
     }
 
     static var availableSourceLanguagesForUserInterface: [TranslationSourceLanguage] {
-        availableSourceLanguages(for: Locale.preferredLanguages)
+        availableSourceLanguages(for: preferredUserInterfaceLanguages)
     }
 
     static func availableSourceLanguages(
@@ -86,14 +105,14 @@ struct TranslationDirection {
     }
 
     static func forUserInterface(sourceLanguage: TranslationSourceLanguage) -> TranslationDirection {
-        forPreferredLanguages(Locale.preferredLanguages, sourceLanguage: sourceLanguage)
+        forPreferredLanguages(preferredUserInterfaceLanguages, sourceLanguage: sourceLanguage)
     }
 
     static func forEditableSelectionReplacement(
         sourceLanguage: TranslationSourceLanguage
     ) -> TranslationDirection {
         forEditableSelectionReplacement(
-            preferredLanguages: Locale.preferredLanguages,
+            preferredLanguages: preferredUserInterfaceLanguages,
             sourceLanguage: sourceLanguage
         )
     }
@@ -107,7 +126,7 @@ struct TranslationDirection {
             sourceLanguage: sourceLanguage
         )
         return TranslationDirection(
-            targetLanguage: sourceLanguage.languageName,
+            targetLanguage: sourceLanguage.promptLanguageName,
             expectedSourceLanguage: readingDirection.targetLanguage
         )
     }
@@ -116,15 +135,15 @@ struct TranslationDirection {
         _ preferredLanguages: [String],
         sourceLanguage: TranslationSourceLanguage = .japanese
     ) -> TranslationDirection {
-        let preferredTargetLanguage = interfaceLanguage(for: preferredLanguages).languageName
+        let preferredTargetLanguage = interfaceLanguage(for: preferredLanguages).promptLanguageName
 
-        let targetLanguage = preferredTargetLanguage == sourceLanguage.languageName
+        let targetLanguage = preferredTargetLanguage == sourceLanguage.promptLanguageName
             ? (sourceLanguage == .japanese ? "English" : "Japanese")
             : preferredTargetLanguage
 
         return TranslationDirection(
             targetLanguage: targetLanguage,
-            expectedSourceLanguage: sourceLanguage.languageName
+            expectedSourceLanguage: sourceLanguage.promptLanguageName
         )
     }
 
@@ -143,7 +162,7 @@ struct TranslationDirection {
     }
 
     static var screenshotLanguageBehaviorInstructions: String {
-        screenshotLanguageBehaviorInstructions(for: Locale.preferredLanguages)
+        screenshotLanguageBehaviorInstructions(for: preferredUserInterfaceLanguages)
     }
 
     static func screenshotLanguageBehaviorInstructions(
@@ -173,7 +192,7 @@ struct TranslationDirection {
 
         return languageInstructions + """
 
-        - When the user asks for a translation, expect the source language to be \(sourceLanguage.languageName) unless they explicitly say otherwise.
+        - When the user asks for a translation, expect the source language to be \(sourceLanguage.promptLanguageName) unless they explicitly say otherwise.
         """
     }
 
@@ -193,6 +212,28 @@ struct TranslationDirection {
         - Preserve visible UI labels in their original on-screen language, then add a short Simplified Chinese translation in parentheses.
         - For actionSuggestion.label, use a concise, complete next-step instruction in Simplified Chinese. Include the original on-screen label in actionSuggestion.reason or answer when it is in another language.
         """
+    }
+
+    static var preferredUserInterfaceLanguages: [String] {
+        preferredUserInterfaceLanguages(
+            bundlePreferredLocalizations: Bundle.main.preferredLocalizations,
+            localePreferredLanguages: Locale.preferredLanguages
+        )
+    }
+
+    static func preferredUserInterfaceLanguages(
+        bundlePreferredLocalizations: [String],
+        localePreferredLanguages: [String]
+    ) -> [String] {
+        bundlePreferredLocalizations.isEmpty
+            ? localePreferredLanguages
+            : bundlePreferredLocalizations
+    }
+
+    private static func localizedLanguageName(for promptLanguageName: String) -> String {
+        TranslationSourceLanguage.allCases
+            .first { $0.promptLanguageName == promptLanguageName }?
+            .label ?? promptLanguageName
     }
 
     private static func normalizedPrimaryLanguage(from preferredLanguages: [String]) -> String? {

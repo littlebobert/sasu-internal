@@ -13,6 +13,6 @@ struct BrowserPageContext: Equatable {
             return pageTitle
         }
 
-        return pageURL.isEmpty ? "Current page" : pageURL
+        return pageURL.isEmpty ? String(localized: "Current page") : pageURL
     }
 }

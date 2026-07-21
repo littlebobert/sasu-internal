@@ -26,7 +26,7 @@ final class AboutWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "About Sasu"
+        window.title = String(localized: "About Sasu")
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         window.isReleasedWhenClosed = false
         window.delegate = self
@@ -95,14 +95,14 @@ private struct AboutView: View {
             let reportText = DiagnosticLogger.makeBugReportText()
             guard let service = NSSharingService(named: .composeEmail) else {
                 revealReport(reportURL)
-                reportError = "Could not open Mail. The report file was shown in Finder."
+                reportError = String(localized: "Could not open Mail. The report file was shown in Finder.")
                 return
             }
 
             service.recipients = ["justin.garcia@gmail.com"]
-            service.subject = "Sasu Bug Report"
-            service.perform(withItems: [
-                """
+            service.subject = String(localized: "Sasu Bug Report")
+            let message = String(
+                localized: """
                 Hi Justin,
 
                 I ran into a Sasu issue. The diagnostic report is included below.
@@ -112,11 +112,14 @@ private struct AboutView: View {
                 ---
 
                 \(reportText)
-                """,
-            ])
+                """
+            )
+            service.perform(withItems: [message])
             reportError = nil
         } catch {
-            reportError = "Could not create report: \(error.localizedDescription)"
+            reportError = String(
+                localized: "Could not create report: \(error.localizedDescription)"
+            )
         }
     }
 

@@ -9,7 +9,7 @@ final class CursorProgressOverlayController {
     private let cursorOffset = NSPoint(x: 16, y: -18)
     private let statusFont = NSFont.systemFont(ofSize: 13, weight: .medium)
 
-    func show(status: String = "Working…") {
+    func show(status: String = String(localized: "Working…")) {
         if panel == nil {
             panel = makePanel()
         }

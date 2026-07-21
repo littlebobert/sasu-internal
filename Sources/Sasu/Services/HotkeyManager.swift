@@ -120,7 +120,7 @@ enum HotkeyError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .registrationFailed(let status):
-            return "Hotkey registration failed with status \(status)."
+            return String(localized: "Hotkey registration failed with status \(status).")
         }
     }
 }

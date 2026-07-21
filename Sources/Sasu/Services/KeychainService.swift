@@ -111,9 +111,9 @@ enum KeychainError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidData:
-            return "The saved API key could not be read."
+            return String(localized: "The saved API key could not be read.")
         case .unhandledStatus(let status):
-            return "Keychain returned status \(status)."
+            return String(localized: "Keychain returned status \(status).")
         }
     }
 }

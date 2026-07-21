@@ -106,7 +106,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var captureAndAskHotkeyDescription = HotkeyConfiguration.defaultCaptureAndAskConfiguration.displayName
     @Published private(set) var translateSelectionHotkeyDescription = HotkeyConfiguration.defaultTranslateSelectionConfiguration.displayName
     @Published private(set) var translateAndReplaceHotkeyDescription = HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.displayName
-    @Published private(set) var statusMessage = "Set up invite access or add your OpenAI API key, then use the Sasu command wheel."
+    @Published private(set) var statusMessage = String(localized: "Set up invite access or add your OpenAI API key, then use the Sasu command wheel.")
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
     @Published private(set) var shouldOfferAccessibilityRelaunch = false
@@ -379,7 +379,7 @@ final class AppModel: ObservableObject {
         guard ScreenRecordingPermissionStore.needsRelaunchForGrantedAccess else { return }
 
         shouldOfferPermissionRelaunch = true
-        statusMessage = "Screen Recording is enabled in System Settings, but Sasu needs one more relaunch before capture works."
+        statusMessage = String(localized: "Screen Recording is enabled in System Settings, but Sasu needs one more relaunch before capture works.")
     }
 
     private func refreshAccessibilityPermissionState() {
@@ -388,7 +388,7 @@ final class AppModel: ObservableObject {
         guard hasAccessibilityAccess else {
             if isAwaitingAccessibilityGrant {
                 shouldOfferAccessibilityRelaunch = true
-                statusMessage = "If you enabled Sasu in Accessibility settings, relaunch Sasu for Translate & Replace to work."
+                statusMessage = String(localized: "If you enabled Sasu in Accessibility settings, relaunch Sasu for Translate & Replace to work.")
             }
             return
         }
@@ -469,18 +469,18 @@ final class AppModel: ObservableObject {
         isOnboardingGuidanceVisible = false
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
-        statusMessage = "Welcome to Sasu. Try the example before enabling Screen Recording."
+        statusMessage = String(localized: "Welcome to Sasu. Try the example before enabling Screen Recording.")
         answerWindowController.show(appModel: self)
     }
 
     func showOnboardingGuidance() {
         isOnboardingGuidanceVisible = true
-        statusMessage = "Sasu can point to the next place to click."
+        statusMessage = String(localized: "Sasu can point to the next place to click.")
     }
 
     func hideOnboardingGuidance() {
         isOnboardingGuidanceVisible = false
-        statusMessage = "Welcome to Sasu. Try the example before enabling Screen Recording."
+        statusMessage = String(localized: "Welcome to Sasu. Try the example before enabling Screen Recording.")
     }
 
     func completeFirstLaunchOnboarding() {
@@ -488,11 +488,11 @@ final class AppModel: ObservableObject {
         defaults.set(true, forKey: Self.hasCompletedFirstLaunchOnboardingKey)
         isFirstLaunchOnboardingVisible = false
         isOnboardingGuidanceVisible = false
-        statusMessage = "Next, enable Screen Recording so Sasu can see the page you ask about."
+        statusMessage = String(localized: "Next, enable Screen Recording so Sasu can see the page you ask about.")
 
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
+            statusMessage = String(localized: "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask.")
             return
         }
 
@@ -505,7 +505,7 @@ final class AppModel: ObservableObject {
     }
 
     func contactDeveloperAboutOnboarding() {
-        if let url = Self.developerContactURL(subject: "Question about Sasu") {
+        if let url = Self.developerContactURL(subject: String(localized: "Question about Sasu")) {
             NSWorkspace.shared.open(url)
         }
     }
@@ -521,11 +521,11 @@ final class AppModel: ObservableObject {
     }
 
     private static func privacyContactLink() -> NSTextField? {
-        guard let url = developerContactURL(subject: "Privacy question about Sasu") else {
+        guard let url = developerContactURL(subject: String(localized: "Privacy question about Sasu")) else {
             return nil
         }
 
-        let text = "Have questions about privacy?"
+        let text = String(localized: "Have questions about privacy?")
         let attributedText = NSMutableAttributedString(
             string: text,
             attributes: [
@@ -606,7 +606,8 @@ final class AppModel: ObservableObject {
     func closeUnmanagedSettingsWindows() {
         NSApp.windows
             .filter { window in
-                window.title == "Sasu Settings" && !settingsWindowController.owns(window)
+                window.identifier?.rawValue == "SasuSettingsWindow"
+                    && !settingsWindowController.owns(window)
             }
             .forEach { window in
                 window.close()
@@ -629,7 +630,7 @@ final class AppModel: ObservableObject {
     func saveAPIKey() {
         let trimmedKey = apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedKey.isEmpty else {
-            errorMessage = "Paste an OpenAI API key before saving."
+            errorMessage = String(localized: "Paste an OpenAI API key before saving.")
             return
         }
 
@@ -639,9 +640,9 @@ final class AppModel: ObservableObject {
             storedAPIKeyPreview = Self.apiKeyPreview(for: trimmedKey)
             hasStoredAPIKey = true
             errorMessage = nil
-            statusMessage = "OpenAI API key saved in Keychain."
+            statusMessage = String(localized: "OpenAI API key saved in Keychain.")
         } catch {
-            errorMessage = "Could not save API key: \(error.localizedDescription)"
+            errorMessage = String(localized: "Could not save API key: \(error.localizedDescription)")
         }
     }
 
@@ -651,9 +652,9 @@ final class AppModel: ObservableObject {
             hasStoredAPIKey = false
             storedAPIKeyPreview = ""
             errorMessage = nil
-            statusMessage = "OpenAI API key cleared."
+            statusMessage = String(localized: "OpenAI API key cleared.")
         } catch {
-            errorMessage = "Could not clear API key: \(error.localizedDescription)"
+            errorMessage = String(localized: "Could not clear API key: \(error.localizedDescription)")
         }
     }
 
@@ -669,9 +670,9 @@ final class AppModel: ObservableObject {
             backendAccessLabel = ""
             defaults.removeObject(forKey: Self.backendAccessLabelKey)
             errorMessage = nil
-            statusMessage = "Sasu backend access cleared."
+            statusMessage = String(localized: "Sasu backend access cleared.")
         } catch {
-            errorMessage = "Could not clear Sasu backend access: \(error.localizedDescription)"
+            errorMessage = String(localized: "Could not clear Sasu backend access: \(error.localizedDescription)")
         }
     }
 
@@ -715,14 +716,14 @@ final class AppModel: ObservableObject {
             return
         }
 
-        errorMessage = "Sasu could not read this link."
+        errorMessage = String(localized: "Sasu could not read this link.")
         showSettingsWindowWithStandardOrdering()
     }
 
     private func redeemInviteCode(_ rawCode: String) {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !code.isEmpty else {
-            errorMessage = "Paste an invite code before redeeming."
+            errorMessage = String(localized: "Paste an invite code before redeeming.")
             return
         }
         guard let backendBaseURL else {
@@ -732,7 +733,7 @@ final class AppModel: ObservableObject {
 
         isRequestInFlight = true
         errorMessage = nil
-        statusMessage = "Redeeming invite..."
+        statusMessage = String(localized: "Redeeming invite...")
 
         Task { @MainActor in
             do {
@@ -748,10 +749,10 @@ final class AppModel: ObservableObject {
                 backendAccessTokenPreview = Self.backendTokenPreview(for: redemption.accessToken)
                 hasStoredBackendAccessToken = true
                 errorMessage = nil
-                statusMessage = "Invite accepted. Sasu is ready."
+                statusMessage = String(localized: "Invite accepted. Sasu is ready.")
             } catch {
                 errorMessage = error.localizedDescription
-                statusMessage = "Could not redeem invite."
+                statusMessage = String(localized: "Could not redeem invite.")
             }
 
             isRequestInFlight = false
@@ -799,7 +800,7 @@ final class AppModel: ObservableObject {
         selectedModelPresetID = ModelPreset.gpt56HighFast.id
         applySelectedModelPreset()
         errorMessage = nil
-        statusMessage = "Model reset to \(ModelPreset.gpt56HighFast.label)."
+        statusMessage = String(localized: "Model reset to \(ModelPreset.gpt56HighFast.label).")
     }
 
     var selectedModelPreset: ModelPreset {
@@ -852,7 +853,7 @@ final class AppModel: ObservableObject {
         } else {
             let updatedModifiers = hotkeyModifiers & ~modifier
             guard updatedModifiers != 0 else {
-                errorMessage = "Choose at least one modifier for the global hotkey."
+                errorMessage = String(localized: "Choose at least one modifier for the global hotkey.")
                 return
             }
 
@@ -863,7 +864,7 @@ final class AppModel: ObservableObject {
     func resetHotkeyToDefault() {
         hotkeyKeyCode = HotkeyConfiguration.defaultConfiguration.keyCode
         hotkeyModifiers = HotkeyConfiguration.defaultConfiguration.modifiers
-        statusMessage = "Command wheel hotkey reset to \(hotkeyDescription)."
+        statusMessage = String(localized: "Command wheel hotkey reset to \(hotkeyDescription).")
     }
 
     func setCaptureAndAskHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
@@ -872,7 +873,7 @@ final class AppModel: ObservableObject {
         } else {
             let updatedModifiers = captureAndAskHotkeyModifiers & ~modifier
             guard updatedModifiers != 0 else {
-                errorMessage = "Choose at least one modifier for the Capture & Ask hotkey."
+                errorMessage = String(localized: "Choose at least one modifier for the Capture & Ask hotkey.")
                 return
             }
 
@@ -883,7 +884,7 @@ final class AppModel: ObservableObject {
     func resetCaptureAndAskHotkeyToDefault() {
         captureAndAskHotkeyKeyCode = HotkeyConfiguration.defaultCaptureAndAskConfiguration.keyCode
         captureAndAskHotkeyModifiers = HotkeyConfiguration.defaultCaptureAndAskConfiguration.modifiers
-        statusMessage = "Capture & Ask hotkey reset to \(captureAndAskHotkeyDescription)."
+        statusMessage = String(localized: "Capture & Ask hotkey reset to \(captureAndAskHotkeyDescription).")
     }
 
     func setTranslateSelectionHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
@@ -892,7 +893,7 @@ final class AppModel: ObservableObject {
         } else {
             let updatedModifiers = translateSelectionHotkeyModifiers & ~modifier
             guard updatedModifiers != 0 else {
-                errorMessage = "Choose at least one modifier for the Translate Selection hotkey."
+                errorMessage = String(localized: "Choose at least one modifier for the Translate Selection hotkey.")
                 return
             }
 
@@ -903,7 +904,7 @@ final class AppModel: ObservableObject {
     func resetTranslateSelectionHotkeyToDefault() {
         translateSelectionHotkeyKeyCode = HotkeyConfiguration.defaultTranslateSelectionConfiguration.keyCode
         translateSelectionHotkeyModifiers = HotkeyConfiguration.defaultTranslateSelectionConfiguration.modifiers
-        statusMessage = "Translate Selection hotkey reset to \(translateSelectionHotkeyDescription)."
+        statusMessage = String(localized: "Translate Selection hotkey reset to \(translateSelectionHotkeyDescription).")
     }
 
     func setTranslateAndReplaceHotkeyModifier(_ modifier: UInt32, enabled: Bool) {
@@ -912,7 +913,7 @@ final class AppModel: ObservableObject {
         } else {
             let updatedModifiers = translateAndReplaceHotkeyModifiers & ~modifier
             guard updatedModifiers != 0 else {
-                errorMessage = "Choose at least one modifier for the Translate & Replace hotkey."
+                errorMessage = String(localized: "Choose at least one modifier for the Translate & Replace hotkey.")
                 return
             }
 
@@ -925,13 +926,13 @@ final class AppModel: ObservableObject {
             HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.keyCode
         translateAndReplaceHotkeyModifiers =
             HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.modifiers
-        statusMessage = "Translate & Replace hotkey reset to \(translateAndReplaceHotkeyDescription)."
+        statusMessage = String(localized: "Translate & Replace hotkey reset to \(translateAndReplaceHotkeyDescription).")
     }
 
     func captureAndAsk() {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
-            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
             return
         }
 
@@ -960,7 +961,7 @@ final class AppModel: ObservableObject {
     func translateVisibleSelection(sourceApplication: NSRunningApplication? = nil) {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
-            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
             return
         }
 
@@ -1002,7 +1003,7 @@ final class AppModel: ObservableObject {
     func translateClipboard() {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
-            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
             return
         }
 
@@ -1014,13 +1015,13 @@ final class AppModel: ObservableObject {
     func translateAndReplaceSelection(sourceApplication: NSRunningApplication? = nil) {
         guard !isRequestInFlight else { return }
         guard !isFirstLaunchOnboardingVisible else {
-            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
             return
         }
 
         guard selectionAutomationService.hasAccessibilityAccess() else {
             guard presentEditableSelectionAccessibilityPrimer() else {
-                statusMessage = "Translate & Replace was cancelled."
+                statusMessage = String(localized: "Translate & Replace was cancelled.")
                 return
             }
             requestAccessibilityAccess()
@@ -1035,13 +1036,13 @@ final class AppModel: ObservableObject {
 
     func sendFollowUp() {
         guard !isFirstLaunchOnboardingVisible else {
-            statusMessage = "Click Sasuを始める in the example to enable Screen Recording first."
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
             return
         }
         let followUp = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !followUp.isEmpty else { return }
         guard lastScreenshot != nil else {
-            errorMessage = "Capture the screen before sending a follow-up."
+            errorMessage = String(localized: "Capture the screen before sending a follow-up.")
             return
         }
 
@@ -1059,9 +1060,9 @@ final class AppModel: ObservableObject {
         isRequestInFlight = false
         streamingResponseText = ""
         cursorProgressOverlayController.hide()
-        statusMessage = "Request stopped."
+        statusMessage = String(localized: "Request stopped.")
         errorMessage = nil
-        transcriptMessages.append(ChatTranscriptMessage(role: .error, text: "Request stopped."))
+        transcriptMessages.append(ChatTranscriptMessage(role: .error, text: String(localized: "Request stopped.")))
         Self.logger.info("User cancelled current request.")
     }
 
@@ -1069,18 +1070,18 @@ final class AppModel: ObservableObject {
         guard let text = lastResponse?.text else { return }
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
-        statusMessage = "Answer copied to clipboard."
+        statusMessage = String(localized: "Answer copied to clipboard.")
     }
 
     func copyTranscriptToPasteboard() {
         let transcript = transcriptMessages
-            .map { "\($0.role.rawValue):\n\($0.text)" }
+            .map { "\($0.role.displayLabel):\n\($0.localizedTranscriptText)" }
             .joined(separator: "\n\n")
         guard !transcript.isEmpty else { return }
 
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(transcript, forType: .string)
-        statusMessage = "Transcript copied to clipboard."
+        statusMessage = String(localized: "Transcript copied to clipboard.")
     }
 
     func clearTranscript() {
@@ -1090,7 +1091,7 @@ final class AppModel: ObservableObject {
         shouldOfferPermissionRelaunch = false
         currentHighlightSuggestion = nil
         hideHighlight()
-        statusMessage = "Transcript cleared."
+        statusMessage = String(localized: "Transcript cleared.")
     }
 
     func clearPreparedScreenshot() {
@@ -1103,7 +1104,7 @@ final class AppModel: ObservableObject {
 
     func showScreenshotWindow(imageData: Data) {
         guard let image = NSImage(data: imageData) else {
-            errorMessage = "Could not open screenshot preview."
+            errorMessage = String(localized: "Could not open screenshot preview.")
             return
         }
 
@@ -1288,7 +1289,7 @@ final class AppModel: ObservableObject {
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
         ].compactMap { $0 }
 
-        statusMessage = "Opened Screen Recording settings. Enable Sasu, then relaunch Sasu."
+        statusMessage = String(localized: "Opened Screen Recording settings. Enable Sasu, then relaunch Sasu.")
 
         for url in urls where Self.openSystemSettings(url: url) {
             Task { @MainActor in
@@ -1302,7 +1303,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        errorMessage = "Open System Settings > Privacy & Security > Screen Recording, then enable Sasu."
+        errorMessage = String(localized: "Open System Settings > Privacy & Security > Screen Recording, then enable Sasu.")
     }
 
     func openAccessibilitySettings() {
@@ -1314,7 +1315,7 @@ final class AppModel: ObservableObject {
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
         ].compactMap { $0 }
 
-        statusMessage = "Opened Accessibility settings. Enable Sasu, then relaunch Sasu."
+        statusMessage = String(localized: "Opened Accessibility settings. Enable Sasu, then relaunch Sasu.")
 
         for url in urls where Self.openSystemSettings(url: url) {
             Task { @MainActor in
@@ -1328,7 +1329,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        errorMessage = "Open System Settings > Privacy & Security > Accessibility, then enable Sasu."
+        errorMessage = String(localized: "Open System Settings > Privacy & Security > Accessibility, then enable Sasu.")
     }
 
     func openAutomationSettings() {
@@ -1337,7 +1338,7 @@ final class AppModel: ObservableObject {
             URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy")
         ].compactMap { $0 }
 
-        statusMessage = "Opened Automation settings. Enable Safari under Sasu, then capture Safari again."
+        statusMessage = String(localized: "Opened Automation settings. Enable Safari under Sasu, then capture Safari again.")
 
         for url in urls where Self.openSystemSettings(url: url) {
             Task { @MainActor in
@@ -1351,7 +1352,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        errorMessage = "Open System Settings > Privacy & Security > Automation, then enable Safari under Sasu."
+        errorMessage = String(localized: "Open System Settings > Privacy & Security > Automation, then enable Safari under Sasu.")
     }
 
     func requestAccessibilityAccess() {
@@ -1369,7 +1370,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.shouldRestoreWindowsAfterAccessibilityPrompt = true
         }
-        statusMessage = "Approve the macOS Accessibility prompt, or enable Sasu in System Settings, then relaunch Sasu."
+        statusMessage = String(localized: "Approve the macOS Accessibility prompt, or enable Sasu in System Settings, then relaunch Sasu.")
         refreshAccessibilityPermissionState()
     }
 
@@ -1391,15 +1392,15 @@ final class AppModel: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Translate Selected Text Faster?"
-        alert.informativeText = """
+        alert.messageText = String(localized: "Translate Selected Text Faster?")
+        alert.informativeText = String(localized: """
         With Accessibility permission, Translate Selection can copy highlighted text directly instead of taking a screenshot. This makes translations faster and avoids sending a screenshot.
 
         Accessibility also enables Translate & Replace, which can replace editable selections in place. Sasu uses this access only when you choose one of those commands.
-        """
-        alert.addButton(withTitle: "Proceed")
-        alert.addButton(withTitle: "Not Now")
-        alert.addButton(withTitle: "Don’t Ask Again")
+        """)
+        alert.addButton(withTitle: String(localized: "Proceed"))
+        alert.addButton(withTitle: String(localized: "Not Now"))
+        alert.addButton(withTitle: String(localized: "Don’t Ask Again"))
         alert.accessoryView = Self.privacyContactLink()
 
         switch alert.runModal() {
@@ -1441,14 +1442,14 @@ final class AppModel: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Enable Translate & Replace?"
-        alert.informativeText = """
+        alert.messageText = String(localized: "Enable Translate & Replace?")
+        alert.informativeText = String(localized: """
         Translate & Replace copies selected text from the app you are editing, translates it into your chosen language, and replaces the selection in place.
 
         macOS requires Accessibility permission so Sasu can send Copy and Paste commands. Sasu uses this access only when you choose Translate Selection or Translate & Replace. Translate Selection can still fall back to a screenshot if you do not grant access.
-        """
-        alert.addButton(withTitle: "Proceed")
-        alert.addButton(withTitle: "Not Now")
+        """)
+        alert.addButton(withTitle: String(localized: "Proceed"))
+        alert.addButton(withTitle: String(localized: "Not Now"))
         alert.accessoryView = Self.privacyContactLink()
 
         guard alert.runModal() == .alertFirstButtonReturn else {
@@ -1505,14 +1506,14 @@ final class AppModel: ObservableObject {
 
             let alert = NSAlert()
             alert.alertStyle = .informational
-            alert.messageText = "Sasu Needs Screen Recording"
-            alert.informativeText = """
+            alert.messageText = String(localized: "Sasu Needs Screen Recording")
+            alert.informativeText = String(localized: """
             Sasu captures your screen only when you choose Capture & Ask or Capture Screen, then sends that screenshot to OpenAI with your question.
 
             macOS requires Screen Recording permission before Sasu can see the page or app you want help with.
-            """
-            alert.addButton(withTitle: "Accept Screen Recording")
-            alert.addButton(withTitle: "Not Yet")
+            """)
+            alert.addButton(withTitle: String(localized: "Accept Screen Recording"))
+            alert.addButton(withTitle: String(localized: "Not Yet"))
             alert.accessoryView = Self.privacyContactLink()
 
             switch alert.runModal() {
@@ -1533,7 +1534,7 @@ final class AppModel: ObservableObject {
 
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
+            statusMessage = String(localized: "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask.")
             restoreWindowsAfterScreenRecordingPrompt()
             return
         }
@@ -1548,17 +1549,17 @@ final class AppModel: ObservableObject {
         noteWindowsToRestoreAfterScreenRecordingPrompt()
         hideWindowsForSystemPermissionPrompt()
 
-        statusMessage = "Waiting for Screen Recording permission..."
+        statusMessage = String(localized: "Waiting for Screen Recording permission...")
         _ = CGRequestScreenCaptureAccess()
 
         if ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             DiagnosticLogger.log("Screen Recording permission granted immediately.", category: "Permissions")
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
+            statusMessage = String(localized: "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask.")
             restoreWindowsAfterScreenRecordingPrompt()
         } else {
             DiagnosticLogger.log("Screen Recording permission not granted after request.", category: "Permissions")
-            statusMessage = "Approve the macOS Screen Recording prompt. If you do not see it, use Open Screen Recording Settings."
+            statusMessage = String(localized: "Approve the macOS Screen Recording prompt. If you do not see it, use Open Screen Recording Settings.")
         }
     }
 
@@ -1590,7 +1591,7 @@ final class AppModel: ObservableObject {
         if wasWaitingForScreenRecording,
            ScreenRecordingPermissionStore.markGrantConfirmedIfGranted() {
             refreshScreenRecordingPermissionState()
-            statusMessage = "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask."
+            statusMessage = String(localized: "Screen Recording permission granted. Press \(hotkeyDescription) and choose Capture & Ask.")
         }
 
         restoreWindowsAfterScreenRecordingPrompt()
@@ -1616,7 +1617,7 @@ final class AppModel: ObservableObject {
     func relaunchSasu() {
         let bundleURL = Bundle.main.bundleURL
         guard bundleURL.pathExtension == "app" else {
-            errorMessage = "Quit this process and launch Sasu from Build/Sasu.app so macOS applies permission changes to the app bundle."
+            errorMessage = String(localized: "Quit this process and launch Sasu from Build/Sasu.app so macOS applies permission changes to the app bundle.")
             return
         }
 
@@ -1658,7 +1659,7 @@ final class AppModel: ObservableObject {
     }
 
     private var hotkeyReadinessMessage: String {
-        "Ready. Use \(hotkeyDescription) for the wheel, \(captureAndAskHotkeyDescription) to capture and ask, \(translateSelectionHotkeyDescription) to translate a visible selection, or \(translateAndReplaceHotkeyDescription) to translate and replace editable text."
+        String(localized: "Ready. Use \(hotkeyDescription) for the command wheel.")
     }
 
     private func updateHotkeyRegistration() {
@@ -1678,8 +1679,8 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             statusMessage = hotkeyReadinessMessage
         } catch {
-            errorMessage = "Could not register \(hotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use the Sasu menu while the command wheel hotkey is unavailable."
+            errorMessage = String(localized: "Could not register \(hotkeyDescription): \(error.localizedDescription)")
+            statusMessage = String(localized: "Use the Sasu menu while the command wheel hotkey is unavailable.")
         }
     }
 
@@ -1700,8 +1701,8 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             statusMessage = hotkeyReadinessMessage
         } catch {
-            errorMessage = "Could not register \(captureAndAskHotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use Capture & Ask from the app while the hotkey is unavailable."
+            errorMessage = String(localized: "Could not register \(captureAndAskHotkeyDescription): \(error.localizedDescription)")
+            statusMessage = String(localized: "Use Capture & Ask from the app while the hotkey is unavailable.")
         }
     }
 
@@ -1722,8 +1723,8 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             statusMessage = hotkeyReadinessMessage
         } catch {
-            errorMessage = "Could not register \(translateSelectionHotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use Translate Selection from the app while the hotkey is unavailable."
+            errorMessage = String(localized: "Could not register \(translateSelectionHotkeyDescription): \(error.localizedDescription)")
+            statusMessage = String(localized: "Use Translate Selection from the app while the hotkey is unavailable.")
         }
     }
 
@@ -1747,8 +1748,8 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             statusMessage = hotkeyReadinessMessage
         } catch {
-            errorMessage = "Could not register \(translateAndReplaceHotkeyDescription): \(error.localizedDescription)"
-            statusMessage = "Use Translate & Replace from the app while the hotkey is unavailable."
+            errorMessage = String(localized: "Could not register \(translateAndReplaceHotkeyDescription): \(error.localizedDescription)")
+            statusMessage = String(localized: "Use Translate & Replace from the app while the hotkey is unavailable.")
         }
     }
 
@@ -1756,7 +1757,7 @@ final class AppModel: ObservableObject {
         isRequestInFlight = true
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
-        statusMessage = "Capturing screen..."
+        statusMessage = String(localized: "Capturing screen...")
         Self.logger.info("Preparing screenshot for user query.")
 
         do {
@@ -1769,29 +1770,31 @@ final class AppModel: ObservableObject {
             isScreenshotPrepared = true
             appendScreenshotMessage(for: screenshot)
             followUpText = isFirstScreenshot
-                ? (screenshot.browserPageContext == nil ? "Explain this" : "Explain this page")
-                : "What now?"
+                ? (screenshot.browserPageContext == nil
+                    ? String(localized: "Explain this")
+                    : String(localized: "Explain this page"))
+                : String(localized: "What now?")
             querySelectionNonce += 1
             currentHighlightSuggestion = nil
             hideHighlight()
             if let browserPageContext = screenshot.browserPageContext {
-                statusMessage = "Screenshot and Safari page ready. Type your question and press Send."
+                statusMessage = String(localized: "Screenshot and Safari page ready. Type your question and press Send.")
                 Self.logger.info("Prepared screenshot with Safari page. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height)), pageCharacters=\(browserPageContext.text.count)")
             } else if screenshot.browserPageCaptureIssue != nil {
-                statusMessage = "Screenshot ready, but Safari page content was not included."
+                statusMessage = String(localized: "Screenshot ready, but Safari page content was not included.")
                 Self.logger.info("Prepared screenshot without Safari page after attempted Safari capture. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
             } else {
-                statusMessage = "Screenshot ready. Type your question and press Send."
+                statusMessage = String(localized: "Screenshot ready. Type your question and press Send.")
                 Self.logger.info("Prepared screenshot. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
             }
         } catch is CancellationError {
-            statusMessage = "Capture stopped."
+            statusMessage = String(localized: "Capture stopped.")
             errorMessage = nil
             Self.logger.info("Screenshot preparation cancelled.")
         } catch {
             errorMessage = error.localizedDescription
             shouldOfferPermissionRelaunch = (error as? ScreenshotError) == .permissionDenied
-            statusMessage = "Something went wrong."
+            statusMessage = String(localized: "Something went wrong.")
             transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
             Self.logger.error("Screenshot preparation failed: \(error.localizedDescription, privacy: .public)")
         }
@@ -1808,7 +1811,7 @@ final class AppModel: ObservableObject {
         shouldOfferPermissionRelaunch = false
         currentHighlightSuggestion = nil
         hideHighlight()
-        statusMessage = "Reading clipboard..."
+        statusMessage = String(localized: "Reading clipboard...")
         Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
 
         do {
@@ -1823,16 +1826,17 @@ final class AppModel: ObservableObject {
             )
             let sourceMessage = ChatTranscriptMessage(
                 role: .user,
-                text: "Clipboard text: \(sourceText)",
-                sourceReadings: sourceReadings
+                text: sourceText,
+                sourceReadings: sourceReadings,
+                sourceKind: .clipboard
             )
             transcriptMessages.append(sourceMessage)
 
             try Task.checkCancellation()
             let credential = try requestCredential()
 
-            statusMessage = "Translating clipboard..."
-            cursorProgressOverlayController.show(status: "Translating…")
+            statusMessage = String(localized: "Translating clipboard...")
+            cursorProgressOverlayController.show(status: String(localized: "Translating…"))
             answerWindowController.show(appModel: self)
             let result = try await openAIClient.translateClipboardText(
                 credential: credential,
@@ -1849,7 +1853,7 @@ final class AppModel: ObservableObject {
                 }
             )
             try Task.checkCancellation()
-            let translation = "Translation: \(Self.normalizedTranslationText(result))"
+            let translation = Self.normalizedTranslationText(result)
 
             lastResponse = AssistantResponse(
                 text: translation,
@@ -1857,17 +1861,17 @@ final class AppModel: ObservableObject {
                 actionSuggestion: nil
             )
             transcriptMessages.append(ChatTranscriptMessage(role: .assistant, text: translation))
-            statusMessage = "Clipboard translation ready."
+            statusMessage = String(localized: "Clipboard translation ready.")
             DiagnosticLogger.log("Clipboard translation ready. sourceCharacters=\(sourceText.count) localSegmentsWithReadings=\(readingCount)", category: "OpenAI")
             Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count), localSegmentsWithReadings=\(readingCount)")
         } catch is CancellationError {
-            statusMessage = "Request stopped."
+            statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
             Self.logger.info("Clipboard translation cancelled.")
         } catch {
             errorMessage = error.localizedDescription
             transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
-            statusMessage = "Something went wrong."
+            statusMessage = String(localized: "Something went wrong.")
             Self.logger.error("Clipboard translation failed: \(error.localizedDescription, privacy: .public)")
         }
 
@@ -1888,8 +1892,8 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         currentHighlightSuggestion = nil
         hideHighlight()
-        statusMessage = "Reading selected text..."
-        cursorProgressOverlayController.show(status: "Reading selection…")
+        statusMessage = String(localized: "Reading selected text...")
+        cursorProgressOverlayController.show(status: String(localized: "Reading selection…"))
 
         var pasteboardBackup: PasteboardBackup?
 
@@ -1907,15 +1911,16 @@ final class AppModel: ObservableObject {
             transcriptMessages.append(
                 ChatTranscriptMessage(
                     role: .user,
-                    text: "Selected text: \(sourceText)",
-                    sourceReadings: sourceReadings
+                    text: sourceText,
+                    sourceReadings: sourceReadings,
+                    sourceKind: .selection
                 )
             )
 
             try Task.checkCancellation()
             let credential = try requestCredential()
-            statusMessage = "Translating selected text..."
-            cursorProgressOverlayController.update(status: "Translating…")
+            statusMessage = String(localized: "Translating selected text...")
+            cursorProgressOverlayController.update(status: String(localized: "Translating…"))
             answerWindowController.show(appModel: self)
 
             let result = try await openAIClient.translateClipboardText(
@@ -1943,14 +1948,14 @@ final class AppModel: ObservableObject {
             transcriptMessages.append(
                 ChatTranscriptMessage(role: .assistant, text: translation)
             )
-            statusMessage = "Translation ready."
+            statusMessage = String(localized: "Translation ready.")
             DiagnosticLogger.log(
                 "Selected text translation ready. sourceCharacters=\(sourceText.count)",
                 category: "OpenAI"
             )
         } catch is CancellationError {
             pasteboardBackup?.restore()
-            statusMessage = "Request stopped."
+            statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
         } catch {
             pasteboardBackup?.restore()
@@ -1958,7 +1963,7 @@ final class AppModel: ObservableObject {
             transcriptMessages.append(
                 ChatTranscriptMessage(role: .error, text: error.localizedDescription)
             )
-            statusMessage = "Translation failed."
+            statusMessage = String(localized: "Translation failed.")
             requestUserAttentionIfNeeded()
         }
 
@@ -1975,14 +1980,14 @@ final class AppModel: ObservableObject {
 
     private func runTranslateSelection() async {
         isRequestInFlight = true
-        cursorProgressOverlayController.show(status: "Translating selection…")
+        cursorProgressOverlayController.show(status: String(localized: "Translating selection…"))
         defer {
             cursorProgressOverlayController.hide()
         }
 
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
-        statusMessage = "Translating selection..."
+        statusMessage = String(localized: "Translating selection...")
         Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
 
         var pasteboardBackup: PasteboardBackup?
@@ -2024,13 +2029,13 @@ final class AppModel: ObservableObject {
             )
             pasteboardBackup = nil
 
-            statusMessage = "Selection translated."
+            statusMessage = String(localized: "Selection translated.")
             Self.logger.info("Selection translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count)")
         } catch is CancellationError {
             if let pasteboardBackup {
                 pasteboardBackup.restore()
             }
-            statusMessage = "Request stopped."
+            statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
             Self.logger.info("Selection translation cancelled.")
         } catch {
@@ -2038,7 +2043,7 @@ final class AppModel: ObservableObject {
                 pasteboardBackup.restore()
             }
             errorMessage = error.localizedDescription
-            statusMessage = "Selection translation failed."
+            statusMessage = String(localized: "Selection translation failed.")
             Self.logger.error("Selection translation failed: \(error.localizedDescription, privacy: .public)")
             requestUserAttentionIfNeeded()
         }
@@ -2080,8 +2085,10 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         statusMessage = mode == .visibleSelectionTranslation
-            ? "Reading visible selection..."
-            : (reuseLastScreenshot ? "Sending follow-up..." : "Capturing screen...")
+            ? String(localized: "Reading visible selection...")
+            : (reuseLastScreenshot
+                ? String(localized: "Sending follow-up...")
+                : String(localized: "Capturing screen..."))
         Self.logger.info("Starting capture flow. reuseLastScreenshot=\(reuseLastScreenshot), model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public), imageDetail=\(self.imageDetail, privacy: .public)")
         let conversationContext = mode == .question ? transcriptContextForRequest() : nil
         if mode.showsCaptureDetailsInTranscript {
@@ -2113,8 +2120,8 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             Self.logger.info("Screenshot ready. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
 
-            statusMessage = "Asking OpenAI..."
-            cursorProgressOverlayController.show(status: "Asking OpenAI…")
+            statusMessage = String(localized: "Asking OpenAI...")
+            cursorProgressOverlayController.show(status: String(localized: "Asking OpenAI…"))
             answerWindowController.show(appModel: self)
             let result = try await openAIClient.askAboutScreenshot(
                 credential: credential,
@@ -2145,8 +2152,9 @@ final class AppModel: ObservableObject {
                 transcriptMessages.append(
                     ChatTranscriptMessage(
                         role: .user,
-                        text: "Selected text: \(sourceText)",
-                        sourceReadings: sourceReadings
+                        text: sourceText,
+                        sourceReadings: sourceReadings,
+                        sourceKind: .selection
                     )
                 )
             }
@@ -2166,18 +2174,18 @@ final class AppModel: ObservableObject {
                 )
             )
             statusMessage = mode == .visibleSelectionTranslation
-                ? "Translation ready."
-                : "Answer ready."
+                ? String(localized: "Translation ready.")
+                : String(localized: "Answer ready.")
             Self.logger.info("OpenAI answer ready. characters=\(answer.count), hasHighlight=\(actionSuggestion != nil)")
         } catch is CancellationError {
-            statusMessage = "Request stopped."
+            statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
             Self.logger.info("Capture flow cancelled.")
         } catch {
             errorMessage = error.localizedDescription
             transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
             shouldOfferPermissionRelaunch = (error as? ScreenshotError) == .permissionDenied
-            statusMessage = "Something went wrong."
+            statusMessage = String(localized: "Something went wrong.")
             Self.logger.error("Capture flow failed: \(error.localizedDescription, privacy: .public)")
         }
 
@@ -2216,14 +2224,14 @@ final class AppModel: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Include Full Safari Page?"
-        alert.informativeText = """
+        alert.messageText = String(localized: "Include Full Safari Page?")
+        alert.informativeText = String(localized: """
         This page contains \(pageContext.text.count) characters. Including it may make the response slower.
 
         Do you want to include it?
-        """
-        alert.addButton(withTitle: "Include")
-        alert.addButton(withTitle: "Do Not Include")
+        """)
+        alert.addButton(withTitle: String(localized: "Include"))
+        alert.addButton(withTitle: String(localized: "Do Not Include"))
 
         if alert.runModal() == .alertFirstButtonReturn {
             DiagnosticLogger.log(
@@ -2233,7 +2241,7 @@ final class AppModel: ObservableObject {
             return screenshot
         }
 
-        let reason = "You chose not to include the \(pageContext.text.count)-character Safari page context."
+        let reason = String(localized: "You chose not to include the \(pageContext.text.count)-character Safari page context.")
         let screenshotWithoutPageContext = screenshot.removingBrowserPageContext(reason: reason)
         lastScreenshot = screenshotWithoutPageContext
         replaceLatestScreenshotMessage(with: screenshotWithoutPageContext)
@@ -2256,6 +2264,7 @@ final class AppModel: ObservableObject {
             browserPageContext: screenshot.browserPageContext,
             browserPageCaptureIssue: screenshot.browserPageCaptureIssue,
             sourceReadings: existingMessage.sourceReadings,
+            sourceKind: existingMessage.sourceKind,
             actionSuggestion: existingMessage.actionSuggestion
         )
     }
@@ -2286,7 +2295,7 @@ final class AppModel: ObservableObject {
             mayPresentAutomationPermission = true
         }
 
-        statusMessage = "Reading Safari page..."
+        statusMessage = String(localized: "Reading Safari page...")
         let windowsHiddenForAutomationPrompt = mayPresentAutomationPermission
             ? Self.hideVisibleSasuWindowsForCapture()
             : []
@@ -2309,7 +2318,7 @@ final class AppModel: ObservableObject {
         } catch {
             let issue = error.localizedDescription
             errorMessage = issue
-            statusMessage = "Screenshot ready, but Safari page content was not included."
+            statusMessage = String(localized: "Screenshot ready, but Safari page content was not included.")
             Self.logger.error("Safari page capture failed: \(issue, privacy: .public)")
             DiagnosticLogger.log("Safari page capture failed: \(issue)", category: "Safari")
             return screenshot.addingBrowserPageCaptureIssue(issue)
@@ -2321,16 +2330,16 @@ final class AppModel: ObservableObject {
 
         let alert = NSAlert()
         alert.alertStyle = .informational
-        alert.messageText = "Safari Enhancement"
-        alert.informativeText = """
+        alert.messageText = String(localized: "Safari Enhancement")
+        alert.informativeText = String(localized: """
         Sasu can give guidance based on the full Safari page, not just what’s visible.
 
         When you capture Safari, Sasu can include the active tab title, URL, and page text with your screenshot. It only reads Safari page content when you capture, and sends it with your question.
 
         macOS may ask whether Sasu can control Safari. Safari may also require Safari > Develop > Developer Settings > Allow JavaScript from Apple Events.
-        """
-        alert.addButton(withTitle: "Enable for Safari")
-        alert.addButton(withTitle: "Not Now")
+        """)
+        alert.addButton(withTitle: String(localized: "Enable for Safari"))
+        alert.addButton(withTitle: String(localized: "Not Now"))
 
         defaults.set(true, forKey: Self.hasAnsweredSafariPageCapturePrimerKey)
 
@@ -2341,7 +2350,7 @@ final class AppModel: ObservableObject {
         default:
             DiagnosticLogger.log("User declined Safari page capture.", category: "Permissions")
             automaticallyIncludeSafariPageContent = false
-            statusMessage = "Safari page capture is off. You can turn it on in Settings."
+            statusMessage = String(localized: "Safari page capture is off. You can turn it on in Settings.")
             return false
         }
     }
@@ -2350,7 +2359,7 @@ final class AppModel: ObservableObject {
         let messages = transcriptMessages
             .filter { $0.role != .error && $0.role != .screenshot }
             .suffix(10)
-            .map { "\($0.role.rawValue): \($0.text)" }
+            .map { "\($0.role.rawValue): \($0.machineContextText)" }
             .joined(separator: "\n\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -2376,8 +2385,8 @@ final class AppModel: ObservableObject {
 
     private func receiveStreamedAnswer(_ partialAnswer: String) {
         streamingResponseText = partialAnswer
-        statusMessage = "Answering…"
-        cursorProgressOverlayController.update(status: "Answering…")
+        statusMessage = String(localized: "Answering…")
+        cursorProgressOverlayController.update(status: String(localized: "Answering…"))
     }
 
     private func requestUserAttentionIfNeeded() {
@@ -2471,11 +2480,11 @@ enum AppError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .missingAPIKey:
-            return "Add your OpenAI API key in Sasu before capturing the screen."
+            return String(localized: "Add your OpenAI API key in Sasu before capturing the screen.")
         case .missingInviteAccess:
-            return "Open your Sasu invite link or redeem an invite code in Settings before using invite access."
+            return String(localized: "Open your Sasu invite link or redeem an invite code in Settings before using invite access.")
         case .invalidBackendURL:
-            return "Enter a valid Sasu backend URL in Settings."
+            return String(localized: "Enter a valid Sasu backend URL in Settings.")
         }
     }
 }
@@ -2489,9 +2498,9 @@ enum AccessMode: String, CaseIterable, Identifiable {
     var label: String {
         switch self {
         case .invite:
-            return "Invite access"
+            return String(localized: "Invite access")
         case .apiKey:
-            return "My OpenAI API key"
+            return String(localized: "My OpenAI API key")
         }
     }
 }

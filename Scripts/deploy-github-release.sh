@@ -102,7 +102,7 @@ commit_and_push_sasu_repo() {
         ;;
     esac
   done < <(
-    git -C "$sasu_repo" status --porcelain --untracked-files=no \
+    git -C "$sasu_repo" status --porcelain --untracked-files=all \
       | cut -c4- \
       | sed 's/.* -> //'
   )
@@ -113,7 +113,7 @@ commit_and_push_sasu_repo() {
   fi
 
   git -C "$sasu_repo" add "$plist_relative"
-  git -C "$sasu_repo" add -u Sources/ AppBundle/
+  git -C "$sasu_repo" add Sources/ AppBundle/
 
   if git -C "$sasu_repo" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
     echo "error: tag $TAG already exists on origin." >&2

@@ -56,7 +56,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .captureScreen:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Capture & Ask",
+                label: String(localized: "Capture & Ask"),
                 symbolNames: ["camera.viewfinder", "rectangle.dashed"],
                 symbolStyle: .accent,
                 action: #selector(captureScreen)
@@ -64,7 +64,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .translateSelection:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Translate Selection",
+                label: String(localized: "Translate Selection"),
                 symbolNames: ["translate", "character.book.closed", "textformat"],
                 symbolStyle: .accent,
                 action: #selector(translateSelection)
@@ -72,7 +72,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .translateAndReplace:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Translate & Replace",
+                label: String(localized: "Translate & Replace"),
                 symbolNames: ["character.cursor.ibeam", "text.cursor"],
                 symbolStyle: .accent,
                 action: #selector(translateAndReplace)
@@ -80,7 +80,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .copyAnswer:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Copy Answer",
+                label: String(localized: "Copy Answer"),
                 symbolNames: ["doc.on.doc", "doc.on.clipboard"],
                 symbolStyle: .accent,
                 action: #selector(copyAnswer)
@@ -88,7 +88,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .clearTranscript:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Clear",
+                label: String(localized: "Clear"),
                 symbolNames: ["trash"],
                 symbolStyle: .multicolor,
                 action: #selector(clearTranscript)
@@ -96,7 +96,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .settings:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: "Settings",
+                label: String(localized: "Settings"),
                 symbolNames: ["gear", "gearshape"],
                 symbolStyle: .multicolor,
                 action: #selector(showSettings)
@@ -156,7 +156,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             defer: false
         )
 
-        panel.title = "Transcript"
+        panel.title = String(localized: "Transcript")
         panel.titleVisibility = .hidden
         panel.titlebarAppearsTransparent = true
         panel.level = .floating
@@ -287,16 +287,12 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             height: min(max(fittingSize.height, 390), 560)
         )
         var frame = window.frameRect(forContentRect: NSRect(origin: .zero, size: contentSize))
-        frame.origin.x = window.frame.midX - frame.width / 2
-        frame.origin.y = window.frame.maxY - frame.height
-
         if let visibleFrame = window.screen?.visibleFrame ?? NSScreen.main?.visibleFrame {
-            if frame.minY < visibleFrame.minY + 20 {
-                frame.origin.y = visibleFrame.midY - frame.height / 2
-            }
-            if frame.maxY > visibleFrame.maxY - 20 {
-                frame.origin.y = visibleFrame.maxY - frame.height - 20
-            }
+            frame.origin.x = visibleFrame.midX - frame.width / 2
+            frame.origin.y = visibleFrame.midY - frame.height / 2
+        } else {
+            frame.origin.x = window.frame.midX - frame.width / 2
+            frame.origin.y = window.frame.midY - frame.height / 2
         }
 
         window.setFrame(frame, display: true, animate: false)

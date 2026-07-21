@@ -4,15 +4,21 @@ import SwiftUI
 struct MarkdownText: View {
     let markdown: String
     var fontSize: CGFloat = NSFont.systemFontSize
+    var onUserScroll: (() -> Void)?
 
     var body: some View {
-        MarkdownTextView(markdown: markdown, fontSize: fontSize)
+        MarkdownTextView(
+            markdown: markdown,
+            fontSize: fontSize,
+            onUserScroll: onUserScroll
+        )
     }
 }
 
 private struct MarkdownTextView: NSViewRepresentable {
     let markdown: String
     let fontSize: CGFloat
+    let onUserScroll: (() -> Void)?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -21,10 +27,12 @@ private struct MarkdownTextView: NSViewRepresentable {
     func makeNSView(context: Context) -> LinkTextView {
         let textView = LinkTextView()
         textView.delegate = context.coordinator
+        textView.onUserScroll = onUserScroll
         return textView
     }
 
     func updateNSView(_ textView: LinkTextView, context: Context) {
+        textView.onUserScroll = onUserScroll
         textView.textStorage?.setAttributedString(Self.attributedMarkdown(for: markdown, fontSize: fontSize))
         textView.invalidateIntrinsicContentSize()
     }
@@ -42,9 +50,7 @@ private struct MarkdownTextView: NSViewRepresentable {
     }
 
     private static func attributedMarkdown(for markdown: String, fontSize: CGFloat) -> NSAttributedString {
-        let normalizedMarkdown = TextSpacingRepair.repairMissingSpaces(
-            in: markdownWithSafeSoftBreaks(markdown)
-        )
+        let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
         let attributedString: AttributedString
         do {
             attributedString = try AttributedString(
@@ -70,79 +76,6 @@ private struct MarkdownTextView: NSViewRepresentable {
         addDetectedLinks(to: result)
 
         return result
-    }
-
-    private static func markdownWithSafeSoftBreaks(_ markdown: String) -> String {
-        let normalizedMarkdown = markdown
-            .replacingOccurrences(of: "\r\n", with: "\n")
-            .replacingOccurrences(
-                of: #"(?<!\n)\n(?!\n)"#,
-                with: " ",
-                options: .regularExpression
-            )
-        let lines = normalizedMarkdown
-            .components(separatedBy: "\n")
-        guard lines.count > 1 else {
-            return normalizedMarkdown
-        }
-
-        var result = ""
-        var isInsideFence = false
-
-        for index in lines.indices {
-            let line = lines[index]
-            result += line
-
-            guard index < lines.index(before: lines.endIndex) else {
-                break
-            }
-
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            let nextLine = lines[lines.index(after: index)]
-            let trimmedNextLine = nextLine.trimmingCharacters(in: .whitespaces)
-
-            if isFenceDelimiter(trimmedLine) {
-                isInsideFence.toggle()
-                result += "\n"
-            } else if shouldPreserveLineBreak(
-                currentLine: trimmedLine,
-                nextLine: trimmedNextLine,
-                isInsideFence: isInsideFence
-            ) {
-                result += "\n"
-            } else {
-                result += " "
-            }
-        }
-
-        return result
-    }
-
-    private static func shouldPreserveLineBreak(
-        currentLine: String,
-        nextLine: String,
-        isInsideFence: Bool
-    ) -> Bool {
-        isInsideFence
-            || currentLine.isEmpty
-            || nextLine.isEmpty
-            || currentLine.hasSuffix("\\")
-            || currentLine.hasSuffix("  ")
-            || isMarkdownBlockBoundary(currentLine)
-            || isMarkdownBlockBoundary(nextLine)
-    }
-
-    private static func isFenceDelimiter(_ line: String) -> Bool {
-        line.hasPrefix("```") || line.hasPrefix("~~~")
-    }
-
-    private static func isMarkdownBlockBoundary(_ line: String) -> Bool {
-        line.hasPrefix("#")
-            || line.hasPrefix(">")
-            || line.hasPrefix("- ")
-            || line.hasPrefix("* ")
-            || line.hasPrefix("+ ")
-            || line.range(of: #"^\d+\.\s+"#, options: .regularExpression) != nil
     }
 
     private static var paragraphStyle: NSParagraphStyle {
@@ -195,6 +128,7 @@ private struct MarkdownTextView: NSViewRepresentable {
 }
 
 private final class LinkTextView: NSTextView {
+    var onUserScroll: (() -> Void)?
     private var hoverTrackingArea: NSTrackingArea?
 
     convenience init() {
@@ -265,7 +199,7 @@ private final class LinkTextView: NSTextView {
         }
 
         let copyLinkItem = NSMenuItem(
-            title: "Copy Link",
+            title: String(localized: "Copy Link"),
             action: #selector(copyLink(_:)),
             keyEquivalent: ""
         )
@@ -285,12 +219,8 @@ private final class LinkTextView: NSTextView {
     }
 
     override func scrollWheel(with event: NSEvent) {
-        guard let scrollView = ancestorScrollView() else {
-            super.scrollWheel(with: event)
-            return
-        }
-
-        scrollView.scrollWheel(with: event)
+        onUserScroll?()
+        nextResponder?.scrollWheel(with: event)
     }
 
     @objc private func copyLink(_ sender: NSMenuItem) {
@@ -340,18 +270,6 @@ private final class LinkTextView: NSTextView {
             .offsetBy(dx: textContainerOrigin.x, dy: textContainerOrigin.y)
             .insetBy(dx: -4, dy: -4)
         return hitRect.contains(point)
-    }
-
-    private func ancestorScrollView() -> NSScrollView? {
-        var ancestor = superview
-        while let current = ancestor {
-            if let scrollView = current as? NSScrollView {
-                return scrollView
-            }
-            ancestor = current.superview
-        }
-
-        return nil
     }
 
     private func linkURL(at event: NSEvent) -> URL? {

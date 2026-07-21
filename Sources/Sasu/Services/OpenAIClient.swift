@@ -367,11 +367,11 @@ struct OpenAIClient {
             For icon-only targets (exactText is null), place the rectangle tightly around the specific icon only. In toolbars with multiple similar icons, use nearby labeled controls as anchors and double-check you selected the correct icon. Prefer shape "circle" for compact icon buttons. Put disambiguation details in reason when needed.
 
             \(TranslationDirection.screenshotLanguageBehaviorInstructions(
-                for: Locale.preferredLanguages,
+                for: TranslationDirection.preferredUserInterfaceLanguages,
                 sourceLanguage: translationSourceLanguage
             ))
 
-            Format the answer field as clear Markdown.
+            Format the answer field using inline Markdown compatible with the transcript: paragraphs separated by blank lines, emphasis, bold, inline code, and links. Do not use Markdown headings, lists, block quotes, tables, fenced code blocks, thematic rules, or HTML.
             """
         ]
 
@@ -436,7 +436,7 @@ struct OpenAIClient {
             instructions.append("- If this appears to be a chat message, include a one-sentence summary only when it adds useful context.")
         }
 
-        instructions.append("- Return clear Markdown only. Do not wrap the answer in JSON.")
+        instructions.append("- Return inline Markdown only, using paragraphs separated by blank lines, emphasis, bold, inline code, and links. Do not use headings, lists, block quotes, tables, fenced code blocks, thematic rules, or HTML. Do not wrap the answer in JSON.")
 
         var parts = [
             "Task: translate clipboard text.",
@@ -639,23 +639,23 @@ enum OpenAIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "OpenAI returned an invalid response."
+            return String(localized: "OpenAI returned an invalid response.")
         case .httpStatus(let statusCode, let bodyPreview):
             if statusCode == 429 {
-                return "OpenAI returned HTTP 429. This is usually a rate limit, quota issue, or unsupported priority processing. Set Speed to auto and try again.\(Self.formattedBodyPreview(bodyPreview))"
+                return String(localized: "OpenAI returned HTTP 429. This is usually a rate limit, quota issue, or unsupported priority processing. Set Speed to auto and try again.\(Self.formattedBodyPreview(bodyPreview))")
             }
 
-            return "OpenAI request failed with HTTP status \(statusCode).\(Self.formattedBodyPreview(bodyPreview))"
+            return String(localized: "OpenAI request failed with HTTP status \(statusCode).\(Self.formattedBodyPreview(bodyPreview))")
         case .apiError(let statusCode, let message):
             if statusCode == 429 {
-                return "OpenAI returned HTTP 429: \(message) Set Speed to auto if it is currently priority."
+                return String(localized: "OpenAI returned HTTP 429: \(message) Set Speed to auto if it is currently priority.")
             }
 
-            return "OpenAI request failed: \(message)"
+            return String(localized: "OpenAI request failed: \(message)")
         case .decodingFailed(let message, let bodyPreview):
-            return "Sasu could not read OpenAI's response: \(message).\(Self.formattedBodyPreview(bodyPreview))"
+            return String(localized: "Sasu could not read OpenAI's response: \(message).\(Self.formattedBodyPreview(bodyPreview))")
         case .emptyOutput:
-            return "OpenAI returned no answer."
+            return String(localized: "OpenAI returned no answer.")
         }
     }
 
@@ -664,6 +664,6 @@ enum OpenAIError: LocalizedError {
             return ""
         }
 
-        return "\n\nResponse body: \(bodyPreview.prefix(500))"
+        return String(localized: "\n\nResponse body: \(bodyPreview.prefix(500))")
     }
 }

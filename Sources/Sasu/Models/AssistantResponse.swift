@@ -15,11 +15,38 @@ struct RubyTextSegment: Codable, Equatable {
 }
 
 struct ChatTranscriptMessage: Identifiable, Equatable {
+    enum SourceKind {
+        case clipboard
+        case selection
+
+        var displayLabel: String {
+            switch self {
+            case .clipboard:
+                return String(localized: "Clipboard text:")
+            case .selection:
+                return String(localized: "Selected text:")
+            }
+        }
+    }
+
     enum Role: String {
         case screenshot = "Screenshot"
         case user = "You"
         case assistant = "Sasu"
         case error = "Error"
+
+        var displayLabel: String {
+            switch self {
+            case .screenshot:
+                return String(localized: "Screenshot")
+            case .user:
+                return String(localized: "You")
+            case .assistant:
+                return String(localized: "Sasu")
+            case .error:
+                return String(localized: "Error")
+            }
+        }
     }
 
     let id: UUID
@@ -29,6 +56,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
     let browserPageContext: BrowserPageContext?
     let browserPageCaptureIssue: String?
     let sourceReadings: [RubyTextSegment]?
+    let sourceKind: SourceKind?
     let actionSuggestion: HighlightSuggestion?
     let createdAt = Date()
 
@@ -40,6 +68,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
         browserPageContext: BrowserPageContext? = nil,
         browserPageCaptureIssue: String? = nil,
         sourceReadings: [RubyTextSegment]? = nil,
+        sourceKind: SourceKind? = nil,
         actionSuggestion: HighlightSuggestion? = nil
     ) {
         self.id = id
@@ -49,6 +78,7 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
         self.browserPageContext = browserPageContext
         self.browserPageCaptureIssue = browserPageCaptureIssue
         self.sourceReadings = sourceReadings
+        self.sourceKind = sourceKind
         self.actionSuggestion = actionSuggestion
     }
 
@@ -58,5 +88,21 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
 
     var image: NSImage? {
         imageData.flatMap(NSImage.init(data:))
+    }
+
+    var machineContextText: String {
+        switch sourceKind {
+        case .clipboard:
+            return "Clipboard text: \(text)"
+        case .selection:
+            return "Selected text: \(text)"
+        case nil:
+            return text
+        }
+    }
+
+    var localizedTranscriptText: String {
+        guard let sourceKind else { return text }
+        return "\(sourceKind.displayLabel) \(text)"
     }
 }

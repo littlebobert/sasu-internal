@@ -112,17 +112,17 @@ enum SafariPageCaptureError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .automationPermissionDenied:
-            return "Safari page content was not included because macOS Automation permission was denied. Enable Sasu under System Settings > Privacy & Security > Automation, then try again."
+            return String(localized: "Safari page content was not included because macOS Automation permission was denied. Enable Sasu under System Settings > Privacy & Security > Automation, then try again.")
         case .javaScriptPermissionRequired:
-            return "Safari blocked page text extraction. In Safari, enable Safari > Develop > Developer Settings > Allow JavaScript from Apple Events, then capture again."
+            return String(localized: "Safari blocked page text extraction. In Safari, enable Safari > Develop > Developer Settings > Allow JavaScript from Apple Events, then capture again.")
         case .noOpenWindow:
-            return "Safari page content was not included because Safari has no open window."
+            return String(localized: "Safari page content was not included because Safari has no open window.")
         case .emptyPageText:
-            return "Safari page content was not included because the active tab did not expose readable text."
+            return String(localized: "Safari page content was not included because the active tab did not expose readable text.")
         case .unexpectedResult:
-            return "Safari returned an unexpected response while Sasu was reading the page."
+            return String(localized: "Safari returned an unexpected response while Sasu was reading the page.")
         case .scriptFailed(let message):
-            return "Safari page content was not included: \(message)"
+            return String(localized: "Safari page content was not included: \(message)")
         }
     }
 }

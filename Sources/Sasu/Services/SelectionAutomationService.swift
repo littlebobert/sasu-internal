@@ -92,13 +92,13 @@ enum SelectionAutomationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessibilityRequired:
-            return "Enable Sasu in System Settings > Privacy & Security > Accessibility to translate selected text in other apps."
+            return String(localized: "Enable Sasu in System Settings > Privacy & Security > Accessibility to translate selected text in other apps.")
         case .noSelection:
-            return "No text was selected. Select text in the app you are editing, then choose Translate & Replace again."
+            return String(localized: "No text was selected. Select text in the app you are editing, then choose Translate & Replace again.")
         case .emptySelection:
-            return "The selected text is empty. Select text to translate, then choose Translate & Replace again."
+            return String(localized: "The selected text is empty. Select text to translate, then choose Translate & Replace again.")
         case .eventCreationFailed:
-            return "Sasu could not send the copy or paste command."
+            return String(localized: "Sasu could not send the copy or paste command.")
         }
     }
 }

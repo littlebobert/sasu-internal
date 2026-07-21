@@ -134,4 +134,57 @@ final class TranslationDirectionTests: XCTestCase {
 
         XCTAssertTrue(instructions.contains("expect the source language to be Traditional Chinese"))
     }
+
+    func testSupportedInterfaceLocaleVariants() {
+        for locale in ["ja", "ja-JP", "ja_JP"] {
+            XCTAssertTrue(TranslationDirection.prefersJapaneseInterface(for: [locale]))
+        }
+
+        for locale in ["zh-Hans", "zh-Hans-CN", "zh-CN", "zh_CN", "zh-SG"] {
+            XCTAssertTrue(TranslationDirection.prefersSimplifiedChineseInterface(for: [locale]))
+        }
+
+        for locale in ["zh-Hant", "zh-Hant-TW", "zh-TW", "zh_TW", "zh-HK", "zh-MO"] {
+            XCTAssertTrue(TranslationDirection.prefersTraditionalChineseInterface(for: [locale]))
+        }
+    }
+
+    func testBundleLocalizationTakesPriorityOverSystemLanguages() {
+        XCTAssertEqual(
+            TranslationDirection.preferredUserInterfaceLanguages(
+                bundlePreferredLocalizations: ["zh-Hant"],
+                localePreferredLanguages: ["en-US"]
+            ),
+            ["zh-Hant"]
+        )
+        XCTAssertEqual(
+            TranslationDirection.preferredUserInterfaceLanguages(
+                bundlePreferredLocalizations: [],
+                localePreferredLanguages: ["ja-JP"]
+            ),
+            ["ja-JP"]
+        )
+    }
+
+    func testLocalizedDisplayNamesDoNotChangePromptLanguageNames() {
+        XCTAssertEqual(TranslationSourceLanguage.japanese.promptLanguageName, "Japanese")
+        XCTAssertEqual(TranslationSourceLanguage.english.promptLanguageName, "English")
+        XCTAssertEqual(TranslationSourceLanguage.simplifiedChinese.promptLanguageName, "Simplified Chinese")
+        XCTAssertEqual(TranslationSourceLanguage.traditionalChinese.promptLanguageName, "Traditional Chinese")
+
+        let direction = TranslationDirection.forPreferredLanguages(
+            ["zh-Hant"],
+            sourceLanguage: .simplifiedChinese
+        )
+        XCTAssertEqual(direction.targetLanguage, "Traditional Chinese")
+        XCTAssertEqual(direction.expectedSourceLanguage, "Simplified Chinese")
+        XCTAssertFalse(direction.localizedTargetLanguage.isEmpty)
+        XCTAssertFalse(direction.localizedExpectedSourceLanguage.isEmpty)
+
+        let instructions = TranslationDirection.screenshotLanguageBehaviorInstructions(
+            for: ["zh-Hant"],
+            sourceLanguage: .simplifiedChinese
+        )
+        XCTAssertTrue(instructions.contains("expect the source language to be Simplified Chinese"))
+    }
 }

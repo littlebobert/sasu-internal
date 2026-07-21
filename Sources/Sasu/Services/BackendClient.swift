@@ -82,14 +82,14 @@ enum BackendError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidResponse:
-            return "Sasu's invite server returned an invalid response."
+            return String(localized: "Sasu's invite server returned an invalid response.")
         case .apiError(let statusCode, let message):
             if statusCode == 401 {
-                return "This invite link is invalid, expired, or has already been used."
+                return String(localized: "This invite link is invalid, expired, or has already been used.")
             }
-            return "Sasu's invite server returned HTTP \(statusCode): \(message)"
+            return String(localized: "Sasu's invite server returned HTTP \(statusCode): \(message)")
         case .decodingFailed(let message):
-            return "Sasu could not read the invite server response: \(message)."
+            return String(localized: "Sasu could not read the invite server response: \(message).")
         }
     }
 }

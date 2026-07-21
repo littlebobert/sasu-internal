@@ -43,7 +43,8 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
             defer: false
         )
 
-        window.title = "Sasu Settings"
+        window.identifier = NSUserInterfaceItemIdentifier("SasuSettingsWindow")
+        window.title = String(localized: "Sasu Settings")
         window.collectionBehavior = [.fullScreenAuxiliary, .moveToActiveSpace]
         window.isReleasedWhenClosed = false
         window.delegate = self

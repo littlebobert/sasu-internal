@@ -23,9 +23,9 @@ enum ClipboardTextError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noText:
-            return "The clipboard does not contain text. Copy text first, then press Translate Clipboard."
+            return String(localized: "The clipboard does not contain text. Copy text first, then press Translate Clipboard.")
         case .emptyText:
-            return "The clipboard text is empty. Copy the text you want translated, then press Translate Clipboard."
+            return String(localized: "The clipboard text is empty. Copy the text you want translated, then press Translate Clipboard.")
         }
     }
 }

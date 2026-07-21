@@ -299,11 +299,11 @@ enum ScreenshotError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .permissionDenied:
-            return "Sasu still cannot capture the screen. If Screen Recording is already enabled for Sasu, relaunch Sasu so macOS applies the new permission."
+            return String(localized: "Sasu still cannot capture the screen. If Screen Recording is already enabled for Sasu, relaunch Sasu so macOS applies the new permission.")
         case .captureFailed:
-            return "Sasu could not capture the main display."
+            return String(localized: "Sasu could not capture the main display.")
         case .encodingFailed:
-            return "Sasu captured the display but could not encode the screenshot."
+            return String(localized: "Sasu captured the display but could not encode the screenshot.")
         }
     }
 }

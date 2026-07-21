@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AnswerPanelView: View {
     @EnvironmentObject private var appModel: AppModel
+    @State private var shouldAutoScrollTranscript = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -87,7 +88,7 @@ struct AnswerPanelView: View {
             let direction = TranslationDirection.forUserInterface(
                 sourceLanguage: appModel.translationSourceLanguage
             )
-            Text("Sasu reads \(direction.expectedSourceLanguage) into \(direction.targetLanguage), and translates editable text in the reverse direction. You can change this later in Settings.")
+            Text("Sasu reads \(direction.localizedExpectedSourceLanguage) into \(direction.localizedTargetLanguage), and translates editable text in the reverse direction. You can change this later in Settings.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -155,7 +156,11 @@ struct AnswerPanelView: View {
             Text("This is a welcome message for Sasu. It says Sasu helps explain Japanese pages and forms, then points to the next place to click. The green button means “Start using Sasu.”")
                 .fixedSize(horizontal: false, vertical: true)
 
-            Button(appModel.isOnboardingGuidanceVisible ? "Hide guidance" : "Show me where to click") {
+            Button(
+                appModel.isOnboardingGuidanceVisible
+                    ? LocalizedStringResource("Hide guidance")
+                    : LocalizedStringResource("Show me where to click")
+            ) {
                 if appModel.isOnboardingGuidanceVisible {
                     appModel.hideOnboardingGuidance()
                 } else {
@@ -186,7 +191,8 @@ struct AnswerPanelView: View {
                                 VStack(alignment: .leading, spacing: 12) {
                                     TranscriptMessageView(
                                         message: message,
-                                        availableWidth: max(300, geometry.size.width - 32)
+                                        availableWidth: max(300, geometry.size.width - 32),
+                                        onUserScroll: suspendTranscriptAutoScroll
                                     )
 
                                     if let highlight = message.actionSuggestion {
@@ -205,10 +211,16 @@ struct AnswerPanelView: View {
                                         .font(.caption.bold())
                                         .foregroundStyle(.blue)
 
-                                    Text(appModel.streamingResponseText)
-                                        .font(.system(size: appModel.transcriptFontSize))
-                                        .textSelection(.enabled)
-                                        .fixedSize(horizontal: false, vertical: true)
+                                    MarkdownText(
+                                        markdown: appModel.streamingResponseText,
+                                        fontSize: appModel.transcriptFontSize,
+                                        onUserScroll: suspendTranscriptAutoScroll
+                                    )
+                                    .frame(
+                                        width: max(300, geometry.size.width - 32),
+                                        alignment: .leading
+                                    )
+                                    .fixedSize(horizontal: false, vertical: true)
                                 }
                                 .id("streaming-response")
                             }
@@ -226,13 +238,21 @@ struct AnswerPanelView: View {
                         .padding(.trailing, 8)
                     }
                     .onChange(of: appModel.transcriptMessages.count) { _ in
+                        guard shouldAutoScrollTranscript else { return }
+                        scrollTranscriptToBottomAfterLayoutSettles(proxy)
+                    }
+                    .onChange(of: appModel.isRequestInFlight) { isRequestInFlight in
+                        guard isRequestInFlight else { return }
+                        shouldAutoScrollTranscript = true
                         scrollTranscriptToBottomAfterLayoutSettles(proxy)
                     }
                     .onChange(of: appModel.currentHighlightSuggestion) { _ in
+                        guard shouldAutoScrollTranscript else { return }
                         scrollTranscriptToBottom(proxy)
                     }
-                    .onChange(of: appModel.streamingResponseText) { _ in
-                        scrollTranscriptToBottom(proxy)
+                    .onChange(of: appModel.streamingResponseText) { text in
+                        guard !text.isEmpty, shouldAutoScrollTranscript else { return }
+                        scrollTranscriptToBottomAfterLayoutSettles(proxy, animated: false)
                     }
                 }
             }
@@ -256,16 +276,36 @@ struct AnswerPanelView: View {
         }
     }
 
-    private func scrollTranscriptToBottomAfterLayoutSettles(_ proxy: ScrollViewProxy) {
-        scrollTranscriptToBottom(proxy)
+    private func scrollTranscriptToBottomAfterLayoutSettles(
+        _ proxy: ScrollViewProxy,
+        animated: Bool = true
+    ) {
+        let scroll = {
+            proxy.scrollTo("transcript-bottom", anchor: .bottom)
+        }
+
+        DispatchQueue.main.async {
+            if animated {
+                withAnimation(.easeOut(duration: 0.2), scroll)
+            } else {
+                scroll()
+            }
+        }
 
         for delay in [0.05, 0.2] {
             DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
-                withAnimation(.easeOut(duration: 0.15)) {
-                    proxy.scrollTo("transcript-bottom", anchor: .bottom)
+                guard shouldAutoScrollTranscript else { return }
+                if animated {
+                    withAnimation(.easeOut(duration: 0.15), scroll)
+                } else {
+                    scroll()
                 }
             }
         }
+    }
+
+    private func suspendTranscriptAutoScroll() {
+        shouldAutoScrollTranscript = false
     }
 
     private func highlightSummary(
@@ -279,7 +319,11 @@ struct AnswerPanelView: View {
 
                 Spacer()
 
-                Button(isCurrentSuggestion && appModel.isHighlightVisible ? "Hide" : "Show") {
+                Button(
+                    isCurrentSuggestion && appModel.isHighlightVisible
+                        ? LocalizedStringResource("Hide")
+                        : LocalizedStringResource("Show")
+                ) {
                     if appModel.isHighlightVisible {
                         appModel.hideHighlight()
                     } else {
@@ -312,16 +356,20 @@ struct AnswerPanelView: View {
 
     private var followUp: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(appModel.lastResponse == nil ? "Question" : "Follow-up")
-                .font(.caption.bold())
+            Text(
+                appModel.lastResponse == nil
+                    ? LocalizedStringResource("Question")
+                    : LocalizedStringResource("Follow-up")
+            )
+            .font(.caption.bold())
                 .foregroundStyle(.secondary)
 
             HStack(alignment: .top, spacing: 8) {
                 SelectAllTextField(
                     text: $appModel.followUpText,
                     placeholder: appModel.isScreenshotPrepared
-                        ? "Ask about this screenshot..."
-                        : "Capture a screenshot first...",
+                        ? String(localized: "Ask about this screenshot...")
+                        : String(localized: "Capture a screenshot first..."),
                     selectAllTrigger: appModel.querySelectionNonce,
                     isEnabled: !appModel.isRequestInFlight,
                     onSubmit: {
@@ -343,10 +391,11 @@ private struct TranscriptMessageView: View {
     @EnvironmentObject private var appModel: AppModel
     let message: ChatTranscriptMessage
     let availableWidth: CGFloat
+    let onUserScroll: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(message.role.rawValue)
+            Text(message.role.displayLabel)
                 .font(.caption.bold())
                 .foregroundStyle(roleColor)
 
@@ -387,7 +436,11 @@ private struct TranscriptMessageView: View {
                     label: sourceTextDetails.label
                 )
             } else {
-                MarkdownText(markdown: message.text, fontSize: appModel.transcriptFontSize)
+                MarkdownText(
+                    markdown: message.text,
+                    fontSize: appModel.transcriptFontSize,
+                    onUserScroll: onUserScroll
+                )
                     .frame(width: availableWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.bottom, 6)
@@ -476,15 +529,7 @@ private struct TranscriptMessageView: View {
     }
 
     private var sourceTextDetails: (label: String, text: String)? {
-        guard message.role == .user else { return nil }
-
-        for label in ["Clipboard text:", "Selected text:"] {
-            let prefix = "\(label) "
-            if message.text.hasPrefix(prefix) {
-                return (label, String(message.text.dropFirst(prefix.count)))
-            }
-        }
-
-        return nil
+        guard message.role == .user, let sourceKind = message.sourceKind else { return nil }
+        return (sourceKind.displayLabel, message.text)
     }
 }
