@@ -1967,6 +1967,9 @@ final class AppModel: ObservableObject {
                 ChatTranscriptMessage(role: .error, text: error.localizedDescription)
             )
             statusMessage = String(localized: "Translation failed.")
+            let diagnostic = "Selected text translation failed. errorType=\(String(reflecting: type(of: error))) description=\(error.localizedDescription)"
+            DiagnosticLogger.log(diagnostic, category: "OpenAI")
+            Self.logger.error("\(diagnostic, privacy: .public)")
             requestUserAttentionIfNeeded()
         }
 

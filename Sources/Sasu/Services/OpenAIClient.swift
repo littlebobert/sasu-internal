@@ -165,8 +165,14 @@ struct OpenAIClient {
             throw OpenAIError.httpStatus(httpResponse.statusCode, bodyPreview: bodyPreview)
         }
 
+        let requestID = httpResponse.value(forHTTPHeaderField: "x-request-id")
         var text = ""
+        var refusalText = ""
+        var completedText: String?
         var receivedEventCount = 0
+        var decodeFailureCount = 0
+        var eventTypes: [String: Int] = [:]
+
         for try await line in bytes.lines {
             try Task.checkCancellation()
             guard line.hasPrefix("data:") else { continue }
@@ -179,25 +185,90 @@ struct OpenAIClient {
             do {
                 event = try decoder.decode(ResponsesStreamEvent.self, from: data)
             } catch {
+                decodeFailureCount += 1
                 continue
             }
 
             receivedEventCount += 1
-            if event.type == "response.output_text.delta", let delta = event.delta {
-                text += delta
-                await onPartialText?(text)
-            } else if event.type == "error", let message = event.message {
-                throw OpenAIError.apiError(statusCode: httpResponse.statusCode, message: message)
+            eventTypes[event.type, default: 0] += 1
+
+            if let terminalError = event.terminalError(statusCode: httpResponse.statusCode, requestID: requestID) {
+                Self.logStreamFailure(
+                    destination: destination,
+                    statusCode: httpResponse.statusCode,
+                    requestID: requestID,
+                    terminalEvent: event.type,
+                    receivedEventCount: receivedEventCount,
+                    decodeFailureCount: decodeFailureCount,
+                    eventTypes: eventTypes
+                )
+                throw terminalError
+            }
+
+            switch event.type {
+            case "response.output_text.delta":
+                if let delta = event.delta {
+                    text += delta
+                    await onPartialText?(text)
+                }
+            case "response.output_text.done":
+                completedText = event.text
+            case "response.refusal.delta":
+                if let delta = event.delta {
+                    refusalText += delta
+                    await onPartialText?(refusalText)
+                }
+            case "response.refusal.done":
+                if refusalText.isEmpty, let refusal = event.refusal {
+                    refusalText = refusal
+                }
+            default:
+                break
             }
         }
 
+        if text.isEmpty, let completedText {
+            text = completedText
+        }
+        if text.isEmpty {
+            text = refusalText
+        }
         text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty else {
-            throw OpenAIError.emptyOutput
+            let eventSummary = Self.eventSummary(eventTypes)
+            Self.logStreamFailure(
+                destination: destination,
+                statusCode: httpResponse.statusCode,
+                requestID: requestID,
+                terminalEvent: "stream_closed_without_output",
+                receivedEventCount: receivedEventCount,
+                decodeFailureCount: decodeFailureCount,
+                eventTypes: eventTypes
+            )
+            throw OpenAIError.emptyOutput(requestID: requestID, eventSummary: eventSummary)
         }
 
-        Self.logger.info("AI stream completed. destination=\(destination, privacy: .public), status=\(httpResponse.statusCode), events=\(receivedEventCount), characters=\(text.count)")
+        Self.logger.info("AI stream completed. destination=\(destination, privacy: .public), status=\(httpResponse.statusCode), requestID=\(requestID ?? "unknown", privacy: .public), events=\(receivedEventCount), decodeFailures=\(decodeFailureCount), characters=\(text.count)")
         return text
+    }
+
+    private static func logStreamFailure(
+        destination: String,
+        statusCode: Int,
+        requestID: String?,
+        terminalEvent: String,
+        receivedEventCount: Int,
+        decodeFailureCount: Int,
+        eventTypes: [String: Int]
+    ) {
+        let summary = "AI stream failed. destination=\(destination), status=\(statusCode), requestID=\(requestID ?? "unknown"), terminalEvent=\(terminalEvent), events=\(receivedEventCount), decodeFailures=\(decodeFailureCount), eventTypes=\(eventSummary(eventTypes))"
+        logger.error("\(summary, privacy: .public)")
+        DiagnosticLogger.log(summary, category: "OpenAI")
+    }
+
+    private static func eventSummary(_ eventTypes: [String: Int]) -> String {
+        guard !eventTypes.isEmpty else { return "none" }
+        return eventTypes.keys.sorted().map { "\($0):\(eventTypes[$0] ?? 0)" }.joined(separator: ",")
     }
 
     static func partialAnswer(from streamedJSON: String) -> String? {
@@ -548,7 +619,57 @@ private struct ResponsesRequest: Encodable {
 private struct ResponsesStreamEvent: Decodable {
     let type: String
     let delta: String?
+    let text: String?
+    let refusal: String?
     let message: String?
+    let code: String?
+    let error: StreamErrorDetail?
+    let response: StreamResponse?
+
+    func terminalError(statusCode: Int, requestID: String?) -> OpenAIError? {
+        switch type {
+        case "error":
+            return .streamFailed(
+                statusCode: statusCode,
+                code: code ?? error?.code,
+                message: message ?? error?.message ?? "OpenAI reported an unspecified streaming error.",
+                requestID: requestID
+            )
+        case "response.failed":
+            return .streamFailed(
+                statusCode: statusCode,
+                code: response?.error?.code,
+                message: response?.error?.message ?? "OpenAI reported that the response failed.",
+                requestID: requestID
+            )
+        case "response.incomplete":
+            return .incompleteResponse(
+                reason: response?.incompleteDetails?.reason ?? "unknown",
+                requestID: requestID
+            )
+        default:
+            return nil
+        }
+    }
+}
+
+private struct StreamResponse: Decodable {
+    let error: StreamErrorDetail?
+    let incompleteDetails: StreamIncompleteDetails?
+
+    private enum CodingKeys: String, CodingKey {
+        case error
+        case incompleteDetails = "incomplete_details"
+    }
+}
+
+private struct StreamErrorDetail: Decodable {
+    let code: String?
+    let message: String
+}
+
+private struct StreamIncompleteDetails: Decodable {
+    let reason: String?
 }
 
 private struct ReasoningConfiguration: Encodable {
@@ -633,8 +754,10 @@ enum OpenAIError: LocalizedError {
     case invalidResponse
     case httpStatus(Int, bodyPreview: String?)
     case apiError(statusCode: Int, message: String)
+    case streamFailed(statusCode: Int, code: String?, message: String, requestID: String?)
+    case incompleteResponse(reason: String, requestID: String?)
     case decodingFailed(String, bodyPreview: String?)
-    case emptyOutput
+    case emptyOutput(requestID: String?, eventSummary: String)
 
     var errorDescription: String? {
         switch self {
@@ -652,10 +775,15 @@ enum OpenAIError: LocalizedError {
             }
 
             return String(localized: "OpenAI request failed: \(message)")
+        case .streamFailed(_, let code, let message, let requestID):
+            let codeText = code.map { " [\($0)]" } ?? ""
+            return String(localized: "OpenAI's response stream failed\(codeText): \(message)\(Self.formattedRequestID(requestID))")
+        case .incompleteResponse(let reason, let requestID):
+            return String(localized: "OpenAI stopped before producing a complete answer (\(reason)). Try again, or lower Reasoning if this continues.\(Self.formattedRequestID(requestID))")
         case .decodingFailed(let message, let bodyPreview):
             return String(localized: "Sasu could not read OpenAI's response: \(message).\(Self.formattedBodyPreview(bodyPreview))")
-        case .emptyOutput:
-            return String(localized: "OpenAI returned no answer.")
+        case .emptyOutput(let requestID, let eventSummary):
+            return String(localized: "OpenAI closed the response stream without returning answer text. Events: \(eventSummary).\(Self.formattedRequestID(requestID))")
         }
     }
 
@@ -665,5 +793,10 @@ enum OpenAIError: LocalizedError {
         }
 
         return String(localized: "\n\nResponse body: \(bodyPreview.prefix(500))")
+    }
+
+    private static func formattedRequestID(_ requestID: String?) -> String {
+        guard let requestID, !requestID.isEmpty else { return "" }
+        return String(localized: " Request ID: \(requestID)")
     }
 }
