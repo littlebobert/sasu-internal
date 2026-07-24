@@ -210,6 +210,8 @@ final class AppModel: ObservableObject {
     private var windowsHiddenForSystemPermissionPrompt: [NSWindow] = []
     private var accessibilityPromptRestoreArmingTask: Task<Void, Never>?
     private var appActivationObserver: NSObjectProtocol?
+    private var workspaceAppActivationObserver: NSObjectProtocol?
+    private var lastExternalApplication: NSRunningApplication?
     private var attentionRequestID: Int?
     private var isAwaitingAccessibilityGrant = false
     private var isUpdatePresentationActive = false
@@ -968,15 +970,23 @@ final class AppModel: ObservableObject {
             return
         }
 
+        let frontmostApplication = NSWorkspace.shared.frontmostApplication
+        let invokedWhileSasuIsFrontmost = frontmostApplication?.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        let selectionSourceApplication = sourceApplication.flatMap { isSasuApplication($0) ? nil : $0 }
+            ?? (invokedWhileSasuIsFrontmost ? lastExternalApplication : frontmostApplication)
+
         if selectionAutomationService.hasAccessibilityAccess() {
-            sourceApplication?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
+            selectionSourceApplication?.activate(options: [.activateAllWindows, .activateIgnoringOtherApps])
             currentRequestTask = Task {
-                await runTranslateSelectedText()
+                if invokedWhileSasuIsFrontmost {
+                    try? await Task.sleep(nanoseconds: 120_000_000)
+                }
+                await runTranslateSelectedText(fallbackToClipboard: invokedWhileSasuIsFrontmost)
             }
             return
         }
 
-        let sourceApplication = sourceApplication ?? NSWorkspace.shared.frontmostApplication
+        let sourceApplication = selectionSourceApplication
         switch presentTranslateSelectionAccessibilityPrimerIfNeeded() {
         case .proceed:
             requestAccessibilityAccess()
@@ -1185,22 +1195,45 @@ final class AppModel: ObservableObject {
     }
 
     private func registerAppActivationObserverIfNeeded() {
-        guard appActivationObserver == nil else { return }
-
-        appActivationObserver = NotificationCenter.default.addObserver(
-            forName: NSApplication.didBecomeActiveNotification,
-            object: NSApp,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.cancelUserAttentionRequestIfNeeded()
-                self?.closeUnmanagedSettingsWindows()
-                self?.restoreHighlightWindowsAfterUserReturn()
-                self?.restoreWindowsAfterSystemPermissionPromptIfNeeded()
-                self?.refreshAccessibilityPermissionState()
-                self?.refreshScreenRecordingPermissionState()
+        if appActivationObserver == nil {
+            appActivationObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification,
+                object: NSApp,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor in
+                    self?.cancelUserAttentionRequestIfNeeded()
+                    self?.closeUnmanagedSettingsWindows()
+                    self?.restoreHighlightWindowsAfterUserReturn()
+                    self?.restoreWindowsAfterSystemPermissionPromptIfNeeded()
+                    self?.refreshAccessibilityPermissionState()
+                    self?.refreshScreenRecordingPermissionState()
+                }
             }
         }
+
+        guard workspaceAppActivationObserver == nil else { return }
+        if let frontmostApplication = NSWorkspace.shared.frontmostApplication,
+           !isSasuApplication(frontmostApplication) {
+            lastExternalApplication = frontmostApplication
+        }
+        workspaceAppActivationObserver = NSWorkspace.shared.notificationCenter.addObserver(
+            forName: NSWorkspace.didActivateApplicationNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                as? NSRunningApplication else { return }
+
+            Task { @MainActor in
+                guard let self, !self.isSasuApplication(application) else { return }
+                self.lastExternalApplication = application
+            }
+        }
+    }
+
+    private func isSasuApplication(_ application: NSRunningApplication) -> Bool {
+        application.processIdentifier == ProcessInfo.processInfo.processIdentifier
     }
 
     private func restoreHighlightWindowsAfterUserReturn() {
@@ -1889,7 +1922,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func runTranslateSelectedText() async {
+    private func runTranslateSelectedText(fallbackToClipboard: Bool = false) async {
         isRequestInFlight = true
         streamingResponseText = ""
         errorMessage = nil
@@ -1902,11 +1935,20 @@ final class AppModel: ObservableObject {
 
         do {
             try Task.checkCancellation()
-            let copiedSelection = try await selectionAutomationService.copySelectedText()
-            pasteboardBackup = copiedSelection.backup
-            let sourceText = copiedSelection.text
-            copiedSelection.backup.restore()
-            pasteboardBackup = nil
+            let sourceText: String
+            do {
+                let copiedSelection = try await selectionAutomationService.copySelectedText()
+                pasteboardBackup = copiedSelection.backup
+                sourceText = copiedSelection.text
+                copiedSelection.backup.restore()
+                pasteboardBackup = nil
+            } catch SelectionAutomationError.noSelection where fallbackToClipboard {
+                sourceText = try clipboardTextService.readText()
+                statusMessage = String(localized: "No selection found in the previous app. Translating clipboard...")
+            } catch SelectionAutomationError.emptySelection where fallbackToClipboard {
+                sourceText = try clipboardTextService.readText()
+                statusMessage = String(localized: "No selection found in the previous app. Translating clipboard...")
+            }
 
             let sourceReadings = translationSourceLanguage == .japanese
                 ? JapaneseReadingService.readings(for: sourceText)
