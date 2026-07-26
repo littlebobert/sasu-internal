@@ -52,13 +52,15 @@ struct SafariPageCaptureService {
         let javaScript = #"(() => { const text = document.body ? document.body.innerText : ""; return text; })();"#
 
         return """
-        tell application id "\(safariBundleIdentifier)"
-            if not (exists front window) then error "Safari has no open window."
-            set pageTitle to name of current tab of front window
-            set pageURL to URL of current tab of front window
-            set pageText to do JavaScript \(appleScriptStringLiteral(javaScript)) in current tab of front window
-            return {pageTitle, pageURL, pageText}
-        end tell
+        with timeout of 2 seconds
+            tell application id "\(safariBundleIdentifier)"
+                if not (exists front window) then error "Safari has no open window."
+                set pageTitle to name of current tab of front window
+                set pageURL to URL of current tab of front window
+                set pageText to do JavaScript \(appleScriptStringLiteral(javaScript)) in current tab of front window
+                return {pageTitle, pageURL, pageText}
+            end tell
+        end timeout
         """
     }
 
@@ -87,6 +89,10 @@ struct SafariPageCaptureService {
             return .automationPermissionDenied
         }
 
+        if number == -1712 || message.localizedCaseInsensitiveContains("timed out") {
+            return .timedOut
+        }
+
         if message.localizedCaseInsensitiveContains("allow javascript")
             || message.localizedCaseInsensitiveContains("javascript from apple events")
             || message.localizedCaseInsensitiveContains("not allowed to execute javascript") {
@@ -103,6 +109,7 @@ struct SafariPageCaptureService {
 
 enum SafariPageCaptureError: LocalizedError, Equatable {
     case automationPermissionDenied
+    case timedOut
     case javaScriptPermissionRequired
     case noOpenWindow
     case emptyPageText
@@ -113,6 +120,8 @@ enum SafariPageCaptureError: LocalizedError, Equatable {
         switch self {
         case .automationPermissionDenied:
             return String(localized: "Safari page content was not included because macOS Automation permission was denied. Enable Sasu under System Settings > Privacy & Security > Automation, then try again.")
+        case .timedOut:
+            return String(localized: "Safari page content was not included because Safari did not respond in time.")
         case .javaScriptPermissionRequired:
             return String(localized: "Safari blocked page text extraction. In Safari, enable Safari > Develop > Developer Settings > Allow JavaScript from Apple Events, then capture again.")
         case .noOpenWindow:
