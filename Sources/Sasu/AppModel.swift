@@ -211,6 +211,7 @@ final class AppModel: ObservableObject {
     private var accessibilityPromptRestoreArmingTask: Task<Void, Never>?
     private var appActivationObserver: NSObjectProtocol?
     private var workspaceAppActivationObserver: NSObjectProtocol?
+    private var unmanagedSettingsWindowObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
     private var attentionRequestID: Int?
     private var isAwaitingAccessibilityGrant = false
@@ -367,6 +368,7 @@ final class AppModel: ObservableObject {
         }
 
         registerAppActivationObserverIfNeeded()
+        registerUnmanagedSettingsWindowObserverIfNeeded()
         refreshAccessibilityPermissionState()
         refreshScreenRecordingPermissionState()
     }
@@ -607,16 +609,36 @@ final class AppModel: ObservableObject {
 
     func closeUnmanagedSettingsWindows() {
         NSApp.windows
-            .filter { window in
-                guard !settingsWindowController.owns(window) else { return false }
-
-                let identifier = window.identifier?.rawValue.lowercased() ?? ""
-                return window.title == String(localized: "Sasu Settings")
-                    || identifier.contains("settings")
-            }
+            .filter(isUnmanagedSettingsWindow)
             .forEach { window in
                 window.close()
             }
+    }
+
+    private func registerUnmanagedSettingsWindowObserverIfNeeded() {
+        guard unmanagedSettingsWindowObserver == nil else { return }
+
+        unmanagedSettingsWindowObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            guard let window = notification.object as? NSWindow else { return }
+
+            Task { @MainActor in
+                guard let self, self.isUnmanagedSettingsWindow(window) else { return }
+                window.orderOut(nil)
+                window.close()
+            }
+        }
+    }
+
+    private func isUnmanagedSettingsWindow(_ window: NSWindow) -> Bool {
+        guard !settingsWindowController.owns(window) else { return false }
+
+        let identifier = window.identifier?.rawValue.lowercased() ?? ""
+        return window.title == String(localized: "Sasu Settings")
+            || identifier.contains("settings")
     }
 
     private func closeRestoredSettingsWindowsAfterLaunch() {
@@ -1141,7 +1163,7 @@ final class AppModel: ObservableObject {
             guard !Task.isCancelled else { return }
             await MainActor.run {
                 guard let self else { return }
-                self.windowsHiddenForHighlight = Self.hideVisibleSasuWindowsForCapture()
+                self.windowsHiddenForHighlight = hideVisibleSasuWindowsForCapture()
                 self.highlightOverlayController.show(
                     highlight: highlight,
                     screenshot: lastScreenshot
@@ -1248,7 +1270,7 @@ final class AppModel: ObservableObject {
         if windowsHiddenForHighlight.isEmpty {
             answerWindowController.show(appModel: self)
         } else {
-            Self.restoreWindows(windowsHiddenForHighlight)
+            restoreWindows(windowsHiddenForHighlight)
             NSApp.activate(ignoringOtherApps: true)
         }
 
@@ -1610,7 +1632,7 @@ final class AppModel: ObservableObject {
     }
 
     private func hideWindowsForSystemPermissionPrompt() {
-        let newlyHiddenWindows = Self.hideVisibleSasuWindowsForCapture()
+        let newlyHiddenWindows = hideVisibleSasuWindowsForCapture()
         for window in newlyHiddenWindows
         where !windowsHiddenForSystemPermissionPrompt.contains(where: { $0 === window }) {
             windowsHiddenForSystemPermissionPrompt.append(window)
@@ -1635,7 +1657,7 @@ final class AppModel: ObservableObject {
 
     private func restoreWindowsAfterScreenRecordingPrompt() {
         if !windowsHiddenForSystemPermissionPrompt.isEmpty {
-            Self.restoreWindows(windowsHiddenForSystemPermissionPrompt)
+            restoreWindows(windowsHiddenForSystemPermissionPrompt)
         } else if shouldRestoreSettingsAfterScreenRecordingPrompt {
             showSettingsWindowWithStandardOrdering()
         } else if shouldRestoreTranscriptAfterScreenRecordingPrompt {
@@ -2012,7 +2034,6 @@ final class AppModel: ObservableObject {
             let diagnostic = "Selected text translation failed. errorType=\(String(reflecting: type(of: error))) description=\(error.localizedDescription)"
             DiagnosticLogger.log(diagnostic, category: "OpenAI")
             Self.logger.error("\(diagnostic, privacy: .public)")
-            requestUserAttentionIfNeeded()
         }
 
         isRequestInFlight = false
@@ -2318,13 +2339,13 @@ final class AppModel: ObservableObject {
     }
 
     private func captureMainDisplayWithSasuWindowsHidden() async throws -> ScreenshotPayload {
-        let hiddenWindows = Self.hideVisibleSasuWindowsForCapture()
+        let hiddenWindows = hideVisibleSasuWindowsForCapture()
         if !hiddenWindows.isEmpty {
             try await Task.sleep(nanoseconds: 150_000_000)
         }
         try Task.checkCancellation()
         defer {
-            Self.restoreWindows(hiddenWindows)
+            restoreWindows(hiddenWindows)
         }
 
         return try await screenshotService.captureMainDisplay()
@@ -2345,10 +2366,10 @@ final class AppModel: ObservableObject {
 
         statusMessage = String(localized: "Reading Safari page...")
         let windowsHiddenForAutomationPrompt = mayPresentAutomationPermission
-            ? Self.hideVisibleSasuWindowsForCapture()
+            ? hideVisibleSasuWindowsForCapture()
             : []
         defer {
-            Self.restoreWindows(windowsHiddenForAutomationPrompt)
+            restoreWindows(windowsHiddenForAutomationPrompt)
         }
         do {
             try Task.checkCancellation()
@@ -2440,7 +2461,7 @@ final class AppModel: ObservableObject {
     private func requestUserAttentionIfNeeded() {
         guard !NSApp.isActive else { return }
         cancelUserAttentionRequestIfNeeded()
-        attentionRequestID = NSApp.requestUserAttention(.criticalRequest)
+        attentionRequestID = NSApp.requestUserAttention(.informationalRequest)
     }
 
     private func cancelUserAttentionRequestIfNeeded() {
@@ -2450,17 +2471,24 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private static func hideVisibleSasuWindowsForCapture() -> [NSWindow] {
+    private func hideVisibleSasuWindowsForCapture() -> [NSWindow] {
         let windowsToHide = NSApp.windows.filter { window in
-            window.isVisible && !window.isMiniaturized
+            window.isVisible
+                && !window.isMiniaturized
+                && !isUnmanagedSettingsWindow(window)
         }
 
         windowsToHide.forEach { $0.orderOut(nil) }
         return windowsToHide
     }
 
-    private static func restoreWindows(_ windows: [NSWindow]) {
-        windows.forEach { $0.orderFront(nil) }
+    private func restoreWindows(_ windows: [NSWindow]) {
+        windows
+            .filter { window in
+                NSApp.windows.contains(where: { $0 === window })
+                    && !isUnmanagedSettingsWindow(window)
+            }
+            .forEach { $0.orderFront(nil) }
     }
 
     private static func openSystemSettings(url: URL) -> Bool {
