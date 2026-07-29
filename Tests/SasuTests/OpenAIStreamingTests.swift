@@ -6,7 +6,7 @@ final class OpenAIStreamingTests: XCTestCase {
         let streamedJSON = #"{"answer":"Enter the domain name,\nthen click Next."#
 
         XCTAssertEqual(
-            OpenAIClient.partialAnswer(from: streamedJSON),
+            AIRequestSupport.partialAnswer(from: streamedJSON),
             "Enter the domain name,\nthen click Next."
         )
     }
@@ -15,19 +15,19 @@ final class OpenAIStreamingTests: XCTestCase {
         let streamedJSON = #"{"answer":"Click \"Next\" when ready","actionSuggestion":"#
 
         XCTAssertEqual(
-            OpenAIClient.partialAnswer(from: streamedJSON),
+            AIRequestSupport.partialAnswer(from: streamedJSON),
             #"Click "Next" when ready"#
         )
     }
 
     func testReturnsNilUntilAnswerFieldStarts() {
-        XCTAssertNil(OpenAIClient.partialAnswer(from: #"{"#))
-        XCTAssertNil(OpenAIClient.partialAnswer(from: #"{"answer":"#))
+        XCTAssertNil(AIRequestSupport.partialAnswer(from: #"{"#))
+        XCTAssertNil(AIRequestSupport.partialAnswer(from: #"{"answer":"#))
     }
 
     func testDecodesUnicodeEscapesFromPartialAnswer() {
         XCTAssertEqual(
-            OpenAIClient.partialAnswer(from: #"{"answer":"Click \u6b21\u3078""#),
+            AIRequestSupport.partialAnswer(from: #"{"answer":"Click \u6b21\u3078""#),
             "Click 次へ"
         )
     }
@@ -38,7 +38,7 @@ final class OpenAIStreamingTests: XCTestCase {
         """
 
         XCTAssertEqual(
-            OpenAIClient.recoveredAnswer(from: response),
+            AIRequestSupport.recoveredAnswer(from: response),
             "Translated sentence."
         )
     }
@@ -49,11 +49,11 @@ final class OpenAIStreamingTests: XCTestCase {
         """
 
         XCTAssertEqual(
-            OpenAIClient.recoveredAnswer(from: response),
+            AIRequestSupport.recoveredAnswer(from: response),
             "Translated sentence."
         )
         XCTAssertEqual(
-            OpenAIClient.recoveredSourceText(from: response),
+            AIRequestSupport.recoveredSourceText(from: response),
             "選択した文章"
         )
     }

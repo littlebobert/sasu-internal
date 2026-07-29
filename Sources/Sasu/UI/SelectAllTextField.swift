@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SelectAllTextField: NSViewRepresentable {
     @Binding var text: String
@@ -7,9 +8,16 @@ struct SelectAllTextField: NSViewRepresentable {
     let selectAllTrigger: Int
     let isEnabled: Bool
     let onSubmit: () -> Void
+    var onImageDrop: ((Data) -> Void)?
+    var onImageDropTargeted: ((Bool) -> Void)?
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text, onSubmit: onSubmit)
+        Coordinator(
+            text: $text,
+            onSubmit: onSubmit,
+            onImageDrop: onImageDrop,
+            onImageDropTargeted: onImageDropTargeted
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -24,6 +32,12 @@ struct SelectAllTextField: NSViewRepresentable {
         textView.onSubmit = {
             context.coordinator.onSubmit()
         }
+        textView.onImageDrop = { data in
+            context.coordinator.onImageDrop?(data)
+        }
+        textView.onImageDropTargeted = { isTargeted in
+            context.coordinator.onImageDropTargeted?(isTargeted)
+        }
         textView.isEditable = isEnabled
         textView.isSelectable = true
         textView.isRichText = false
@@ -37,6 +51,15 @@ struct SelectAllTextField: NSViewRepresentable {
             width: scrollView.contentSize.width,
             height: .greatestFiniteMagnitude
         )
+        textView.registerForDraggedTypes([
+            .fileURL,
+            .png,
+            .tiff,
+            NSPasteboard.PasteboardType(UTType.image.identifier),
+            NSPasteboard.PasteboardType(UTType.jpeg.identifier),
+            NSPasteboard.PasteboardType(UTType.webP.identifier),
+            NSPasteboard.PasteboardType(UTType.heic.identifier)
+        ])
 
         scrollView.documentView = textView
         return scrollView
@@ -45,6 +68,8 @@ struct SelectAllTextField: NSViewRepresentable {
     func updateNSView(_ scrollView: NSScrollView, context: Context) {
         context.coordinator.text = $text
         context.coordinator.onSubmit = onSubmit
+        context.coordinator.onImageDrop = onImageDrop
+        context.coordinator.onImageDropTargeted = onImageDropTargeted
         guard let textView = scrollView.documentView as? SubmitTextView else { return }
 
         if textView.string != text {
@@ -54,6 +79,12 @@ struct SelectAllTextField: NSViewRepresentable {
         textView.placeholderString = placeholder
         textView.isEditable = isEnabled
         textView.onSubmit = onSubmit
+        textView.onImageDrop = { data in
+            context.coordinator.onImageDrop?(data)
+        }
+        textView.onImageDropTargeted = { isTargeted in
+            context.coordinator.onImageDropTargeted?(isTargeted)
+        }
         textView.needsDisplay = true
 
         guard context.coordinator.lastSelectAllTrigger != selectAllTrigger else {
@@ -70,11 +101,20 @@ struct SelectAllTextField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextViewDelegate {
         var text: Binding<String>
         var onSubmit: () -> Void
+        var onImageDrop: ((Data) -> Void)?
+        var onImageDropTargeted: ((Bool) -> Void)?
         var lastSelectAllTrigger = 0
 
-        init(text: Binding<String>, onSubmit: @escaping () -> Void) {
+        init(
+            text: Binding<String>,
+            onSubmit: @escaping () -> Void,
+            onImageDrop: ((Data) -> Void)?,
+            onImageDropTargeted: ((Bool) -> Void)?
+        ) {
             self.text = text
             self.onSubmit = onSubmit
+            self.onImageDrop = onImageDrop
+            self.onImageDropTargeted = onImageDropTargeted
         }
 
         func textDidChange(_ notification: Notification) {
@@ -88,6 +128,8 @@ struct SelectAllTextField: NSViewRepresentable {
 private final class SubmitTextView: NSTextView {
     var placeholderString = ""
     var onSubmit: (() -> Void)?
+    var onImageDrop: ((Data) -> Void)?
+    var onImageDropTargeted: ((Bool) -> Void)?
 
     override func keyDown(with event: NSEvent) {
         let isReturn = event.keyCode == 36 || event.keyCode == 76
@@ -115,5 +157,94 @@ private final class SubmitTextView: NSTextView {
             y: textContainerInset.height
         )
         placeholderString.draw(at: origin, withAttributes: attributes)
+    }
+
+    override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard imageData(from: sender.draggingPasteboard) != nil else {
+            onImageDropTargeted?(false)
+            return []
+        }
+        onImageDropTargeted?(true)
+        return .copy
+    }
+
+    override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
+        guard imageData(from: sender.draggingPasteboard) != nil else {
+            onImageDropTargeted?(false)
+            return []
+        }
+        onImageDropTargeted?(true)
+        return .copy
+    }
+
+    override func draggingExited(_ sender: NSDraggingInfo?) {
+        onImageDropTargeted?(false)
+    }
+
+    override func draggingEnded(_ sender: NSDraggingInfo) {
+        onImageDropTargeted?(false)
+    }
+
+    override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        imageData(from: sender.draggingPasteboard) != nil
+    }
+
+    override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
+        onImageDropTargeted?(false)
+        guard let data = imageData(from: sender.draggingPasteboard) else {
+            return false
+        }
+        onImageDrop?(data)
+        return true
+    }
+
+    override func paste(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        if let data = imageData(from: pasteboard) {
+            onImageDrop?(data)
+            return
+        }
+        super.paste(sender)
+    }
+
+    private func imageData(from pasteboard: NSPasteboard) -> Data? {
+        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [
+            .urlReadingFileURLsOnly: true
+        ]) as? [URL] {
+            for url in urls {
+                let accessed = url.startAccessingSecurityScopedResource()
+                defer {
+                    if accessed {
+                        url.stopAccessingSecurityScopedResource()
+                    }
+                }
+                if let data = try? Data(contentsOf: url), NSImage(data: data) != nil {
+                    return data
+                }
+            }
+        }
+
+        let typeCandidates: [NSPasteboard.PasteboardType] = [
+            .png,
+            .tiff,
+            NSPasteboard.PasteboardType(UTType.jpeg.identifier),
+            NSPasteboard.PasteboardType(UTType.webP.identifier),
+            NSPasteboard.PasteboardType(UTType.heic.identifier),
+            NSPasteboard.PasteboardType(UTType.image.identifier)
+        ]
+        for type in typeCandidates {
+            if let data = pasteboard.data(forType: type), NSImage(data: data) != nil {
+                return data
+            }
+        }
+
+        if let image = NSImage(pasteboard: pasteboard),
+           let tiff = image.tiffRepresentation,
+           let bitmap = NSBitmapImageRep(data: tiff),
+           let pngData = bitmap.representation(using: .png, properties: [:]) {
+            return pngData
+        }
+
+        return nil
     }
 }

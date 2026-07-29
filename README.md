@@ -2,7 +2,7 @@
 
 Sasu is a macOS app that explains Japanese or English websites, forms, and other on-screen content without changing the page layout.
 
-It captures only when you ask. Depending on your settings, Sasu can send a screenshot, selected text, clipboard text, or Safari page context to OpenAI directly with your own API key, or through the hosted invite backend.
+It captures only when you ask. Depending on your settings, Sasu can send a screenshot, selected text, clipboard text, or Safari page context to OpenAI directly with your own API key, or through the hosted invite backend. Anthropic models such as Opus 5 use your own Anthropic API key only.
 
 ## Build
 

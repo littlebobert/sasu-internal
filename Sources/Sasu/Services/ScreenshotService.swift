@@ -47,7 +47,8 @@ struct ScreenshotService {
             cursorImageLocation: cursorImageLocation,
             hasVisibleSafariWindow: hasVisibleSafariWindow,
             browserPageContext: nil,
-            browserPageCaptureIssue: nil
+            browserPageCaptureIssue: nil,
+            source: .screenCapture
         )
     }
 
@@ -295,6 +296,7 @@ enum ScreenshotError: LocalizedError, Equatable {
     case permissionDenied
     case captureFailed
     case encodingFailed
+    case invalidImage
 
     var errorDescription: String? {
         switch self {
@@ -304,6 +306,8 @@ enum ScreenshotError: LocalizedError, Equatable {
             return String(localized: "Sasu could not capture the main display.")
         case .encodingFailed:
             return String(localized: "Sasu captured the display but could not encode the screenshot.")
+        case .invalidImage:
+            return String(localized: "Sasu could not read that image. Try a PNG, JPEG, HEIC, or WebP file.")
         }
     }
 }

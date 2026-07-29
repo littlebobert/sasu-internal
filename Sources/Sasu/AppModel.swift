@@ -2,12 +2,18 @@ import AppKit
 import CoreGraphics
 import Foundation
 import OSLog
+import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
     private static let logger = Logger(subsystem: "dev.sasu.Sasu", category: "AppModel")
     @Published var accessMode: AccessMode {
-        didSet { defaults.set(accessMode.rawValue, forKey: Self.accessModeKey) }
+        didSet {
+            defaults.set(accessMode.rawValue, forKey: Self.accessModeKey)
+            if hasCompletedInitialization {
+                ensureModelPresetMatchesAccessMode()
+            }
+        }
     }
     @Published var inviteCodeInput = ""
     @Published var backendBaseURLInput: String {
@@ -19,6 +25,9 @@ final class AppModel: ObservableObject {
     @Published var apiKeyInput = ""
     @Published private(set) var hasStoredAPIKey = false
     @Published private(set) var storedAPIKeyPreview = ""
+    @Published var anthropicAPIKeyInput = ""
+    @Published private(set) var hasStoredAnthropicAPIKey = false
+    @Published private(set) var storedAnthropicAPIKeyPreview = ""
     @Published var modelID: String {
         didSet { defaults.set(modelID, forKey: Self.modelIDKey) }
     }
@@ -106,7 +115,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var captureAndAskHotkeyDescription = HotkeyConfiguration.defaultCaptureAndAskConfiguration.displayName
     @Published private(set) var translateSelectionHotkeyDescription = HotkeyConfiguration.defaultTranslateSelectionConfiguration.displayName
     @Published private(set) var translateAndReplaceHotkeyDescription = HotkeyConfiguration.defaultTranslateAndReplaceConfiguration.displayName
-    @Published private(set) var statusMessage = String(localized: "Set up invite access or add your OpenAI API key, then use the Sasu command wheel.")
+    @Published private(set) var statusMessage = String(localized: "Set up invite access or add your API key, then use the Sasu command wheel.")
     @Published private(set) var errorMessage: String?
     @Published private(set) var shouldOfferPermissionRelaunch = false
     @Published private(set) var shouldOfferAccessibilityRelaunch = false
@@ -177,6 +186,7 @@ final class AppModel: ObservableObject {
     private let keychain: KeychainService
     private let screenshotService: ScreenshotService
     private let openAIClient: OpenAIClient
+    private let anthropicClient: AnthropicClient
     private let backendClient: BackendClient
     private let highlightGroundingService: HighlightGroundingService
     private let clipboardTextService: ClipboardTextService
@@ -213,6 +223,7 @@ final class AppModel: ObservableObject {
     private var workspaceAppActivationObserver: NSObjectProtocol?
     private var unmanagedSettingsWindowObserver: NSObjectProtocol?
     private var lastExternalApplication: NSRunningApplication?
+    private var hasCompletedInitialization = false
     private var attentionRequestID: Int?
     private var isAwaitingAccessibilityGrant = false
     private var isUpdatePresentationActive = false
@@ -223,6 +234,7 @@ final class AppModel: ObservableObject {
         keychain: KeychainService = KeychainService(),
         screenshotService: ScreenshotService = ScreenshotService(),
         openAIClient: OpenAIClient = OpenAIClient(),
+        anthropicClient: AnthropicClient = AnthropicClient(),
         backendClient: BackendClient = BackendClient(),
         highlightGroundingService: HighlightGroundingService = HighlightGroundingService(),
         clipboardTextService: ClipboardTextService = ClipboardTextService(),
@@ -233,6 +245,7 @@ final class AppModel: ObservableObject {
         self.keychain = keychain
         self.screenshotService = screenshotService
         self.openAIClient = openAIClient
+        self.anthropicClient = anthropicClient
         self.backendClient = backendClient
         self.highlightGroundingService = highlightGroundingService
         self.clipboardTextService = clipboardTextService
@@ -244,8 +257,7 @@ final class AppModel: ObservableObject {
         self.highlightOverlayController = HighlightOverlayController()
         self.cursorProgressOverlayController = CursorProgressOverlayController()
         self.commandWheelController = CommandWheelController()
-        let savedAccessMode = defaults.string(forKey: Self.accessModeKey)
-        self.accessMode = AccessMode(rawValue: savedAccessMode ?? "") ?? .invite
+        self.accessMode = .invite
         self.backendBaseURLInput = defaults.string(forKey: Self.backendBaseURLKey) ?? Self.defaultBackendBaseURL
         let savedModelID = defaults.string(forKey: Self.modelIDKey)
         let initialModelID: String
@@ -339,14 +351,21 @@ final class AppModel: ObservableObject {
         self.translateSelectionHotkeyDescription = translateSelectionHotkeyConfiguration.displayName
         self.translateAndReplaceHotkeyDescription = translateAndReplaceHotkeyConfiguration.displayName
         refreshStoredAPIKeyPreview()
+        refreshStoredAnthropicAPIKeyPreview()
         refreshStoredBackendAccessTokenPreview()
-        if savedAccessMode == nil, !hasStoredBackendAccessToken, hasStoredAPIKey {
-            accessMode = .apiKey
-        }
+        let savedAccessMode = defaults.string(forKey: Self.accessModeKey)
+        accessMode = AccessMode.resolved(
+            savedRawValue: savedAccessMode,
+            hasStoredBackendAccessToken: hasStoredBackendAccessToken,
+            hasStoredAPIKey: hasStoredAPIKey,
+            hasStoredAnthropicAPIKey: hasStoredAnthropicAPIKey
+        )
         if defaults.object(forKey: Self.hasCompletedFirstLaunchOnboardingKey) == nil,
            defaults.bool(forKey: Self.hasCompletedFirstLaunchKey) {
             defaults.set(true, forKey: Self.hasCompletedFirstLaunchOnboardingKey)
         }
+        hasCompletedInitialization = true
+        ensureModelPresetMatchesAccessMode()
         applySelectedModelPreset()
     }
 
@@ -552,8 +571,19 @@ final class AppModel: ObservableObject {
         switch accessMode {
         case .invite:
             return hasStoredBackendAccessToken
-        case .apiKey:
+        case .openAI:
             return hasStoredAPIKey
+        case .anthropic:
+            return hasStoredAnthropicAPIKey
+        }
+    }
+
+    var availableModelPresets: [ModelPreset] {
+        switch accessMode {
+        case .invite, .openAI:
+            return ModelPreset.all.filter { $0.provider == .openAI }
+        case .anthropic:
+            return ModelPreset.all.filter { $0.provider == .anthropic }
         }
     }
 
@@ -685,6 +715,37 @@ final class AppModel: ObservableObject {
         }
     }
 
+    func saveAnthropicAPIKey() {
+        let trimmedKey = anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedKey.isEmpty else {
+            errorMessage = String(localized: "Paste an Anthropic API key before saving.")
+            return
+        }
+
+        do {
+            try keychain.saveAnthropicAPIKey(trimmedKey)
+            anthropicAPIKeyInput = ""
+            storedAnthropicAPIKeyPreview = Self.anthropicAPIKeyPreview(for: trimmedKey)
+            hasStoredAnthropicAPIKey = true
+            errorMessage = nil
+            statusMessage = String(localized: "Anthropic API key saved in Keychain.")
+        } catch {
+            errorMessage = String(localized: "Could not save API key: \(error.localizedDescription)")
+        }
+    }
+
+    func deleteAnthropicAPIKey() {
+        do {
+            try keychain.deleteAnthropicAPIKey()
+            hasStoredAnthropicAPIKey = false
+            storedAnthropicAPIKeyPreview = ""
+            errorMessage = nil
+            statusMessage = String(localized: "Anthropic API key cleared.")
+        } catch {
+            errorMessage = String(localized: "Could not clear API key: \(error.localizedDescription)")
+        }
+    }
+
     func redeemInviteCodeFromInput() {
         redeemInviteCode(inviteCodeInput)
     }
@@ -714,8 +775,23 @@ final class AppModel: ObservableObject {
         storedAPIKeyPreview = Self.apiKeyPreview(for: apiKey)
     }
 
+    private func refreshStoredAnthropicAPIKeyPreview() {
+        guard let apiKey = try? keychain.readAnthropicAPIKey(), !apiKey.isEmpty else {
+            hasStoredAnthropicAPIKey = false
+            storedAnthropicAPIKeyPreview = ""
+            return
+        }
+
+        hasStoredAnthropicAPIKey = true
+        storedAnthropicAPIKeyPreview = Self.anthropicAPIKeyPreview(for: apiKey)
+    }
+
     private static func apiKeyPreview(for apiKey: String) -> String {
         "sk-...\(apiKey.suffix(4))"
+    }
+
+    private static func anthropicAPIKeyPreview(for apiKey: String) -> String {
+        "sk-ant-...\(apiKey.suffix(4))"
     }
 
     private func refreshStoredBackendAccessTokenPreview() {
@@ -815,19 +891,96 @@ final class AppModel: ObservableObject {
                 throw AppError.invalidBackendURL
             }
             return .backendAccessToken(token, baseURL: backendBaseURL)
-        case .apiKey:
+        case .openAI:
             guard let apiKey = try keychain.readAPIKey(), !apiKey.isEmpty else {
                 throw AppError.missingAPIKey
             }
             return .openAIAPIKey(apiKey)
+        case .anthropic:
+            guard let apiKey = try keychain.readAnthropicAPIKey(), !apiKey.isEmpty else {
+                throw AppError.missingAnthropicAPIKey
+            }
+            return .anthropicAPIKey(apiKey)
+        }
+    }
+
+    private func askAboutScreenshot(
+        credential: AIRequestCredential,
+        prompt: String,
+        screenshot: ScreenshotPayload,
+        conversationContext: String?,
+        onPartialAnswer: (@Sendable (String) async -> Void)?
+    ) async throws -> AssistantResult {
+        switch selectedModelPreset.provider {
+        case .openAI:
+            return try await openAIClient.askAboutScreenshot(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                serviceTier: serviceTier,
+                imageDetail: imageDetail,
+                translationSourceLanguage: translationSourceLanguage,
+                prompt: prompt,
+                screenshot: screenshot,
+                conversationContext: conversationContext,
+                onPartialAnswer: onPartialAnswer
+            )
+        case .anthropic:
+            return try await anthropicClient.askAboutScreenshot(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                imageDetail: imageDetail,
+                translationSourceLanguage: translationSourceLanguage,
+                prompt: prompt,
+                screenshot: screenshot,
+                conversationContext: conversationContext,
+                onPartialAnswer: onPartialAnswer
+            )
+        }
+    }
+
+    private func translateText(
+        credential: AIRequestCredential,
+        sourceText: String,
+        translationDirection: TranslationDirection,
+        conversationContext: String?,
+        forSelectionReplacement: Bool = false,
+        onPartialAnswer: (@Sendable (String) async -> Void)? = nil
+    ) async throws -> String {
+        switch selectedModelPreset.provider {
+        case .openAI:
+            return try await openAIClient.translateClipboardText(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                serviceTier: serviceTier,
+                sourceText: sourceText,
+                translationDirection: translationDirection,
+                conversationContext: conversationContext,
+                forSelectionReplacement: forSelectionReplacement,
+                onPartialAnswer: onPartialAnswer
+            )
+        case .anthropic:
+            return try await anthropicClient.translateClipboardText(
+                credential: credential,
+                modelID: modelID,
+                reasoningEffort: reasoningEffort,
+                sourceText: sourceText,
+                translationDirection: translationDirection,
+                conversationContext: conversationContext,
+                forSelectionReplacement: forSelectionReplacement,
+                onPartialAnswer: onPartialAnswer
+            )
         }
     }
 
     func resetModelToDefault() {
-        selectedModelPresetID = ModelPreset.gpt56HighFast.id
+        let defaultPreset = availableModelPresets.first ?? ModelPreset.gpt56HighFast
+        selectedModelPresetID = defaultPreset.id
         applySelectedModelPreset()
         errorMessage = nil
-        statusMessage = String(localized: "Model reset to \(ModelPreset.gpt56HighFast.label).")
+        statusMessage = String(localized: "Model reset to \(defaultPreset.label).")
     }
 
     var selectedModelPreset: ModelPreset {
@@ -840,6 +993,12 @@ final class AppModel: ObservableObject {
         reasoningEffort = preset.reasoningEffort
         serviceTier = preset.serviceTier
         imageDetail = preset.imageDetail
+    }
+
+    private func ensureModelPresetMatchesAccessMode() {
+        let availableIDs = Set(availableModelPresets.map(\.id))
+        guard !availableIDs.contains(selectedModelPresetID) else { return }
+        selectedModelPresetID = availableModelPresets.first?.id ?? ModelPreset.gpt56HighFast.id
     }
 
     private static func availablePresetID(_ presetID: String?) -> String? {
@@ -1077,7 +1236,7 @@ final class AppModel: ObservableObject {
         let followUp = followUpText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !followUp.isEmpty else { return }
         guard lastScreenshot != nil else {
-            errorMessage = String(localized: "Capture the screen before sending a follow-up.")
+            errorMessage = String(localized: "Capture a screenshot or drop an image before sending a follow-up.")
             return
         }
 
@@ -1085,6 +1244,46 @@ final class AppModel: ObservableObject {
         currentRequestTask = Task {
             await runCapture(prompt: followUp, reuseLastScreenshot: true)
         }
+    }
+
+    @discardableResult
+    func handleDroppedImageProviders(_ providers: [NSItemProvider]) -> Bool {
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
+            return false
+        }
+        guard !isRequestInFlight else { return false }
+        guard let provider = providers.first(where: Self.canLoadImage(from:)) else {
+            return false
+        }
+
+        isRequestInFlight = true
+        errorMessage = nil
+        statusMessage = String(localized: "Loading image...")
+        currentRequestTask = Task {
+            await prepareDroppedImage(from: provider)
+        }
+        return true
+    }
+
+    func handleDroppedImageData(_ data: Data) {
+        guard !isFirstLaunchOnboardingVisible else {
+            statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
+            return
+        }
+        guard !isRequestInFlight else { return }
+
+        isRequestInFlight = true
+        errorMessage = nil
+        statusMessage = String(localized: "Loading image...")
+        currentRequestTask = Task {
+            await prepareDroppedImageData(data)
+        }
+    }
+
+    private static func canLoadImage(from provider: NSItemProvider) -> Bool {
+        provider.hasItemConformingToTypeIdentifier(UTType.image.identifier)
+            || provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier)
     }
 
     func stopCurrentRequest() {
@@ -1566,7 +1765,7 @@ final class AppModel: ObservableObject {
             alert.alertStyle = .informational
             alert.messageText = String(localized: "Sasu Needs Screen Recording")
             alert.informativeText = String(localized: """
-            Sasu captures your screen only when you choose Capture & Ask or Capture Screen, then sends that screenshot to OpenAI with your question.
+            Sasu captures your screen only when you choose Capture & Ask or Capture Screen, then sends that screenshot to your selected AI model with your question.
 
             macOS requires Screen Recording permission before Sasu can see the page or app you want help with.
             """)
@@ -1862,6 +2061,126 @@ final class AppModel: ObservableObject {
         answerWindowController.show(appModel: self)
     }
 
+    private func prepareDroppedImage(from provider: NSItemProvider) async {
+        shouldOfferPermissionRelaunch = false
+        Self.logger.info("Preparing dropped image for query.")
+
+        do {
+            try Task.checkCancellation()
+            let imageData = try await Self.loadImageData(from: provider)
+            try Task.checkCancellation()
+            try stageImportedImage(from: imageData)
+        } catch is CancellationError {
+            statusMessage = String(localized: "Image load stopped.")
+            errorMessage = nil
+            isRequestInFlight = false
+            currentRequestTask = nil
+            Self.logger.info("Dropped image preparation cancelled.")
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = String(localized: "Something went wrong.")
+            transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
+            isRequestInFlight = false
+            currentRequestTask = nil
+            answerWindowController.show(appModel: self)
+            Self.logger.error("Dropped image preparation failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func prepareDroppedImageData(_ data: Data) async {
+        shouldOfferPermissionRelaunch = false
+        Self.logger.info("Preparing pasted or dropped image data for query.")
+
+        do {
+            try Task.checkCancellation()
+            try stageImportedImage(from: data)
+        } catch is CancellationError {
+            statusMessage = String(localized: "Image load stopped.")
+            errorMessage = nil
+            isRequestInFlight = false
+            currentRequestTask = nil
+            Self.logger.info("Image data preparation cancelled.")
+        } catch {
+            errorMessage = error.localizedDescription
+            statusMessage = String(localized: "Something went wrong.")
+            transcriptMessages.append(ChatTranscriptMessage(role: .error, text: error.localizedDescription))
+            isRequestInFlight = false
+            currentRequestTask = nil
+            answerWindowController.show(appModel: self)
+            Self.logger.error("Image data preparation failed: \(error.localizedDescription, privacy: .public)")
+        }
+    }
+
+    private func stageImportedImage(from data: Data) throws {
+        let screenshot = try ScreenshotPayload.importedImage(from: data)
+        lastScreenshot = screenshot
+        screenshotPreviewImage = NSImage(data: screenshot.pngData)
+        isScreenshotPrepared = true
+        appendScreenshotMessage(for: screenshot)
+        currentHighlightSuggestion = nil
+        hideHighlight()
+
+        followUpText = String(localized: "Explain this")
+        querySelectionNonce += 1
+        statusMessage = String(localized: "Image ready. Type your question and press Send.")
+        isRequestInFlight = false
+        currentRequestTask = nil
+        answerWindowController.show(appModel: self)
+        Self.logger.info(
+            "Prepared imported image. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))"
+        )
+    }
+
+    private static func loadImageData(from provider: NSItemProvider) async throws -> Data {
+        if provider.hasItemConformingToTypeIdentifier(UTType.image.identifier) {
+            return try await withCheckedThrowingContinuation { continuation in
+                provider.loadDataRepresentation(forTypeIdentifier: UTType.image.identifier) { data, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+                    guard let data, NSImage(data: data) != nil else {
+                        continuation.resume(throwing: ScreenshotError.invalidImage)
+                        return
+                    }
+                    continuation.resume(returning: data)
+                }
+            }
+        }
+
+        if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+            let url: URL = try await withCheckedThrowingContinuation { continuation in
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                        return
+                    }
+
+                    let resolvedURL: URL?
+                    if let url = item as? URL {
+                        resolvedURL = url
+                    } else if let data = item as? Data {
+                        resolvedURL = URL(dataRepresentation: data, relativeTo: nil)
+                    } else if let path = item as? String {
+                        resolvedURL = URL(fileURLWithPath: path)
+                    } else {
+                        resolvedURL = nil
+                    }
+
+                    guard let resolvedURL else {
+                        continuation.resume(throwing: ScreenshotError.invalidImage)
+                        return
+                    }
+                    continuation.resume(returning: resolvedURL)
+                }
+            }
+
+            return try ScreenshotPayload.importedImage(contentsOf: url).pngData
+        }
+
+        throw ScreenshotError.invalidImage
+    }
+
     private func runTranslateClipboard() async {
         isRequestInFlight = true
         streamingResponseText = ""
@@ -1896,11 +2215,8 @@ final class AppModel: ObservableObject {
             statusMessage = String(localized: "Translating clipboard...")
             cursorProgressOverlayController.show(status: String(localized: "Translating…"))
             answerWindowController.show(appModel: self)
-            let result = try await openAIClient.translateClipboardText(
+            let result = try await translateText(
                 credential: credential,
-                modelID: modelID,
-                reasoningEffort: reasoningEffort,
-                serviceTier: serviceTier,
                 sourceText: sourceText,
                 translationDirection: TranslationDirection.forUserInterface(
                     sourceLanguage: translationSourceLanguage
@@ -1990,11 +2306,8 @@ final class AppModel: ObservableObject {
             cursorProgressOverlayController.update(status: String(localized: "Translating…"))
             answerWindowController.show(appModel: self)
 
-            let result = try await openAIClient.translateClipboardText(
+            let result = try await translateText(
                 credential: credential,
-                modelID: modelID,
-                reasoningEffort: reasoningEffort,
-                serviceTier: serviceTier,
                 sourceText: sourceText,
                 translationDirection: TranslationDirection.forUserInterface(
                     sourceLanguage: translationSourceLanguage
@@ -2076,11 +2389,8 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             let credential = try requestCredential()
 
-            let answer = try await openAIClient.translateClipboardText(
+            let answer = try await translateText(
                 credential: credential,
-                modelID: modelID,
-                reasoningEffort: reasoningEffort,
-                serviceTier: serviceTier,
                 sourceText: sourceText,
                 translationDirection: TranslationDirection.forEditableSelectionReplacement(
                     sourceLanguage: translationSourceLanguage
@@ -2156,7 +2466,9 @@ final class AppModel: ObservableObject {
         statusMessage = mode == .visibleSelectionTranslation
             ? String(localized: "Reading visible selection...")
             : (reuseLastScreenshot
-                ? String(localized: "Sending follow-up...")
+                ? (lastScreenshot?.isImportedImage == true
+                    ? String(localized: "Analyzing image...")
+                    : String(localized: "Sending follow-up..."))
                 : String(localized: "Capturing screen..."))
         Self.logger.info("Starting capture flow. reuseLastScreenshot=\(reuseLastScreenshot), model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public), imageDetail=\(self.imageDetail, privacy: .public)")
         let conversationContext = mode == .question ? transcriptContextForRequest() : nil
@@ -2189,16 +2501,11 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
             Self.logger.info("Screenshot ready. bytes=\(screenshot.pngData.count), pixelWidth=\(Int(screenshot.pixelSize.width)), pixelHeight=\(Int(screenshot.pixelSize.height))")
 
-            statusMessage = String(localized: "Asking OpenAI...")
-            cursorProgressOverlayController.show(status: String(localized: "Asking OpenAI…"))
+            statusMessage = String(localized: "Asking AI...")
+            cursorProgressOverlayController.show(status: String(localized: "Asking AI…"))
             answerWindowController.show(appModel: self)
-            let result = try await openAIClient.askAboutScreenshot(
+            let result = try await askAboutScreenshot(
                 credential: credential,
-                modelID: modelID,
-                reasoningEffort: reasoningEffort,
-                serviceTier: serviceTier,
-                imageDetail: imageDetail,
-                translationSourceLanguage: translationSourceLanguage,
                 prompt: prompt,
                 screenshot: screenshot,
                 conversationContext: conversationContext,
@@ -2245,7 +2552,7 @@ final class AppModel: ObservableObject {
             statusMessage = mode == .visibleSelectionTranslation
                 ? String(localized: "Translation ready.")
                 : String(localized: "Answer ready.")
-            Self.logger.info("OpenAI answer ready. characters=\(answer.count), hasHighlight=\(actionSuggestion != nil)")
+            Self.logger.info("AI answer ready. characters=\(answer.count), hasHighlight=\(actionSuggestion != nil)")
         } catch is CancellationError {
             statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
@@ -2550,6 +2857,7 @@ final class AppModel: ObservableObject {
 
 enum AppError: LocalizedError {
     case missingAPIKey
+    case missingAnthropicAPIKey
     case missingInviteAccess
     case invalidBackendURL
 
@@ -2557,6 +2865,8 @@ enum AppError: LocalizedError {
         switch self {
         case .missingAPIKey:
             return String(localized: "Add your OpenAI API key in Sasu before capturing the screen.")
+        case .missingAnthropicAPIKey:
+            return String(localized: "Add your Anthropic API key in Sasu before using Claude models.")
         case .missingInviteAccess:
             return String(localized: "Open your Sasu invite link or redeem an invite code in Settings before using invite access.")
         case .invalidBackendURL:
@@ -2567,16 +2877,51 @@ enum AppError: LocalizedError {
 
 enum AccessMode: String, CaseIterable, Identifiable {
     case invite
-    case apiKey
+    case openAI
+    case anthropic
 
     var id: String { rawValue }
 
     var label: String {
         switch self {
         case .invite:
-            return String(localized: "Invite access")
-        case .apiKey:
-            return String(localized: "My OpenAI API key")
+            return String(localized: "Invite Access")
+        case .openAI:
+            return String(localized: "OpenAI")
+        case .anthropic:
+            return String(localized: "Anthropic")
         }
+    }
+
+    /// Migrates the former combined "My API key" mode (`apiKey`) and infers a
+    /// first-run default when nothing has been saved yet.
+    static func resolved(
+        savedRawValue: String?,
+        hasStoredBackendAccessToken: Bool,
+        hasStoredAPIKey: Bool,
+        hasStoredAnthropicAPIKey: Bool
+    ) -> AccessMode {
+        if let savedRawValue {
+            switch savedRawValue {
+            case AccessMode.invite.rawValue:
+                return .invite
+            case AccessMode.openAI.rawValue, "apiKey":
+                return .openAI
+            case AccessMode.anthropic.rawValue:
+                return .anthropic
+            default:
+                break
+            }
+        }
+
+        if !hasStoredBackendAccessToken {
+            if hasStoredAnthropicAPIKey, !hasStoredAPIKey {
+                return .anthropic
+            }
+            if hasStoredAPIKey || hasStoredAnthropicAPIKey {
+                return .openAI
+            }
+        }
+        return .invite
     }
 }

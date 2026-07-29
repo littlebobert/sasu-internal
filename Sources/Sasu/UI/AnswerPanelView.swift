@@ -1,8 +1,10 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct AnswerPanelView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var shouldAutoScrollTranscript = true
+    @State private var isImageDropTargeted = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -263,6 +265,9 @@ struct AnswerPanelView: View {
                 Text("On your command, Sasu will capture your screen, then wait for your question before sending anything.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
+                Text("You can also drop an image onto the question box to translate or explain it.")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
@@ -369,11 +374,17 @@ struct AnswerPanelView: View {
                     text: $appModel.followUpText,
                     placeholder: appModel.isScreenshotPrepared
                         ? String(localized: "Ask about this screenshot...")
-                        : String(localized: "Capture a screenshot first..."),
+                        : String(localized: "Capture a screenshot or drop an image..."),
                     selectAllTrigger: appModel.querySelectionNonce,
                     isEnabled: !appModel.isRequestInFlight,
                     onSubmit: {
                         appModel.sendFollowUp()
+                    },
+                    onImageDrop: { data in
+                        appModel.handleDroppedImageData(data)
+                    },
+                    onImageDropTargeted: { isTargeted in
+                        isImageDropTargeted = isTargeted
                     }
                 )
                 .frame(height: 44)
@@ -383,6 +394,21 @@ struct AnswerPanelView: View {
                 }
                 .disabled(appModel.isRequestInFlight || appModel.followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
+        }
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(
+                    isImageDropTargeted ? Color.accentColor : Color.clear,
+                    lineWidth: 2
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isImageDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+                )
+        )
+        .onDrop(of: [.image, .fileURL], isTargeted: $isImageDropTargeted) { providers in
+            appModel.handleDroppedImageProviders(providers)
         }
     }
 }

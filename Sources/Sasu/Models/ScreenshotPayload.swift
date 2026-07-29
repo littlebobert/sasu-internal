@@ -2,6 +2,11 @@ import AppKit
 import CoreGraphics
 import Foundation
 
+enum ScreenshotSource: Equatable {
+    case screenCapture
+    case importedImage
+}
+
 struct ScreenshotPayload {
     let pngData: Data
     let displayID: CGDirectDisplayID
@@ -14,6 +19,11 @@ struct ScreenshotPayload {
     let hasVisibleSafariWindow: Bool
     let browserPageContext: BrowserPageContext?
     let browserPageCaptureIssue: String?
+    let source: ScreenshotSource
+
+    var isImportedImage: Bool {
+        source == .importedImage
+    }
 
     var base64PNG: String {
         pngData.base64EncodedString()
@@ -23,6 +33,49 @@ struct ScreenshotPayload {
         get throws {
             try UploadImage.make(from: self)
         }
+    }
+
+    static func importedImage(from imageData: Data) throws -> ScreenshotPayload {
+        guard let image = NSImage(data: imageData) else {
+            throw ScreenshotError.invalidImage
+        }
+        return try importedImage(from: image)
+    }
+
+    static func importedImage(from image: NSImage) throws -> ScreenshotPayload {
+        guard let pngData = pngData(from: image),
+              let pixelSize = pixelSize(of: image),
+              pixelSize.width > 0,
+              pixelSize.height > 0
+        else {
+            throw ScreenshotError.invalidImage
+        }
+
+        return ScreenshotPayload(
+            pngData: pngData,
+            displayID: 0,
+            pixelSize: pixelSize,
+            frontmostApplicationName: nil,
+            frontmostApplicationBundleIdentifier: nil,
+            frontmostWindowTitle: nil,
+            mouseLocation: .zero,
+            cursorImageLocation: nil,
+            hasVisibleSafariWindow: false,
+            browserPageContext: nil,
+            browserPageCaptureIssue: nil,
+            source: .importedImage
+        )
+    }
+
+    static func importedImage(contentsOf url: URL) throws -> ScreenshotPayload {
+        let accessed = url.startAccessingSecurityScopedResource()
+        defer {
+            if accessed {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        let data = try Data(contentsOf: url)
+        return try importedImage(from: data)
     }
 
     func addingBrowserPageContext(_ browserPageContext: BrowserPageContext) -> ScreenshotPayload {
@@ -37,7 +90,8 @@ struct ScreenshotPayload {
             cursorImageLocation: cursorImageLocation,
             hasVisibleSafariWindow: hasVisibleSafariWindow,
             browserPageContext: browserPageContext,
-            browserPageCaptureIssue: nil
+            browserPageCaptureIssue: nil,
+            source: source
         )
     }
 
@@ -53,7 +107,8 @@ struct ScreenshotPayload {
             cursorImageLocation: cursorImageLocation,
             hasVisibleSafariWindow: hasVisibleSafariWindow,
             browserPageContext: browserPageContext,
-            browserPageCaptureIssue: issue
+            browserPageCaptureIssue: issue,
+            source: source
         )
     }
 
@@ -69,8 +124,31 @@ struct ScreenshotPayload {
             cursorImageLocation: cursorImageLocation,
             hasVisibleSafariWindow: hasVisibleSafariWindow,
             browserPageContext: nil,
-            browserPageCaptureIssue: reason
+            browserPageCaptureIssue: reason,
+            source: source
         )
+    }
+
+    private static func pngData(from image: NSImage) -> Data? {
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData)
+        else {
+            return nil
+        }
+        return bitmap.representation(using: .png, properties: [:])
+    }
+
+    private static func pixelSize(of image: NSImage) -> CGSize? {
+        if let bitmap = image.representations.first as? NSBitmapImageRep {
+            return CGSize(width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
+        }
+
+        guard let tiffData = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiffData)
+        else {
+            return nil
+        }
+        return CGSize(width: bitmap.pixelsWide, height: bitmap.pixelsHigh)
     }
 }
 

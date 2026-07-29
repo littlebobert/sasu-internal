@@ -11,7 +11,9 @@ struct SettingsView: View {
 
     @EnvironmentObject private var appModel: AppModel
     @FocusState private var isAPIKeyFieldFocused: Bool
+    @FocusState private var isAnthropicAPIKeyFieldFocused: Bool
     @State private var hasEditedAPIKey = false
+    @State private var hasEditedAnthropicAPIKey = false
     @State private var selectedTab = SettingsTab.general
 
     var body: some View {
@@ -132,13 +134,15 @@ struct SettingsView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                .frame(maxWidth: 420)
+                .frame(maxWidth: 480)
 
                 switch appModel.accessMode {
                 case .invite:
                     inviteAccessControls
-                case .apiKey:
-                    apiKeyControls
+                case .openAI:
+                    openAIAPIKeyControls
+                case .anthropic:
+                    anthropicAPIKeyControls
                 }
             }
             .padding(.vertical, 4)
@@ -150,9 +154,11 @@ struct SettingsView: View {
     private func accessModeTitle(_ mode: AccessMode) -> LocalizedStringResource {
         switch mode {
         case .invite:
-            return "Invite access"
-        case .apiKey:
-            return "My OpenAI API key"
+            return "Invite Access"
+        case .openAI:
+            return "OpenAI"
+        case .anthropic:
+            return "Anthropic"
         }
     }
 
@@ -207,60 +213,121 @@ struct SettingsView: View {
         !appModel.inviteCodeInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    private var apiKeyControls: some View {
+    private var openAIAPIKeyControls: some View {
+        providerAPIKeyControls(
+            hasStoredKey: appModel.hasStoredAPIKey,
+            keyInput: $appModel.apiKeyInput,
+            placeholder: openAIAPIKeyPlaceholder,
+            isFocused: $isAPIKeyFieldFocused,
+            hasEdited: $hasEditedAPIKey,
+            canSave: canSaveOpenAIAPIKey,
+            helpText: String(localized: "OpenAI models use your own API key. Requests go directly to OpenAI."),
+            onSave: {
+                appModel.saveAPIKey()
+                hasEditedAPIKey = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            },
+            onClear: {
+                appModel.deleteAPIKey()
+                hasEditedAPIKey = false
+            }
+        )
+    }
+
+    private var anthropicAPIKeyControls: some View {
+        providerAPIKeyControls(
+            hasStoredKey: appModel.hasStoredAnthropicAPIKey,
+            keyInput: $appModel.anthropicAPIKeyInput,
+            placeholder: anthropicAPIKeyPlaceholder,
+            isFocused: $isAnthropicAPIKeyFieldFocused,
+            hasEdited: $hasEditedAnthropicAPIKey,
+            canSave: canSaveAnthropicAPIKey,
+            helpText: String(localized: "Anthropic models use your own API key (bring your own key). Requests go directly to Anthropic."),
+            onSave: {
+                appModel.saveAnthropicAPIKey()
+                hasEditedAnthropicAPIKey = !appModel.anthropicAPIKeyInput
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .isEmpty
+            },
+            onClear: {
+                appModel.deleteAnthropicAPIKey()
+                hasEditedAnthropicAPIKey = false
+            }
+        )
+    }
+
+    private func providerAPIKeyControls(
+        hasStoredKey: Bool,
+        keyInput: Binding<String>,
+        placeholder: String,
+        isFocused: FocusState<Bool>.Binding,
+        hasEdited: Binding<Bool>,
+        canSave: Bool,
+        helpText: String,
+        onSave: @escaping () -> Void,
+        onClear: @escaping () -> Void
+    ) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Circle()
-                    .fill(appModel.hasStoredAPIKey ? Color.green : Color.orange)
+                    .fill(hasStoredKey ? Color.green : Color.orange)
                     .frame(width: 10, height: 10)
                 Text(
-                    appModel.hasStoredAPIKey
+                    hasStoredKey
                         ? LocalizedStringResource("API key saved in Keychain")
                         : LocalizedStringResource("No API key saved")
                 )
                 .foregroundStyle(.secondary)
             }
 
-            SecureField(apiKeyPlaceholder, text: $appModel.apiKeyInput)
+            SecureField(placeholder, text: keyInput)
                 .textFieldStyle(.roundedBorder)
-                .focused($isAPIKeyFieldFocused)
-                .onChange(of: appModel.apiKeyInput) { newValue in
-                    hasEditedAPIKey = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                .focused(isFocused)
+                .onChange(of: keyInput.wrappedValue) { newValue in
+                    hasEdited.wrappedValue = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 }
 
             HStack {
-                Button("Save Key") {
-                    appModel.saveAPIKey()
-                    hasEditedAPIKey = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                }
-                .keyboardShortcut(.defaultAction)
-                .disabled(!canSaveAPIKey)
+                Button("Save Key", action: onSave)
+                    .disabled(!canSave)
 
-                Button("Clear Key") {
-                    appModel.deleteAPIKey()
-                    hasEditedAPIKey = false
-                }
-                .disabled(!appModel.hasStoredAPIKey)
+                Button("Clear Key", action: onClear)
+                    .disabled(!hasStoredKey)
             }
+
+            Text(helpText)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    private var apiKeyPlaceholder: String {
+    private var openAIAPIKeyPlaceholder: String {
         appModel.storedAPIKeyPreview.isEmpty
             ? String(localized: "sk-...")
             : appModel.storedAPIKeyPreview
     }
 
-    private var canSaveAPIKey: Bool {
+    private var anthropicAPIKeyPlaceholder: String {
+        appModel.storedAnthropicAPIKeyPreview.isEmpty
+            ? String(localized: "sk-ant-...")
+            : appModel.storedAnthropicAPIKeyPreview
+    }
+
+    private var canSaveOpenAIAPIKey: Bool {
         let hasKeyInput = !appModel.apiKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         return hasKeyInput && (isAPIKeyFieldFocused || hasEditedAPIKey)
+    }
+
+    private var canSaveAnthropicAPIKey: Bool {
+        let hasKeyInput = !appModel.anthropicAPIKeyInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        return hasKeyInput && (isAnthropicAPIKeyFieldFocused || hasEditedAnthropicAPIKey)
     }
 
     private var modelSection: some View {
         settingsGroup("AI Model") {
             VStack(alignment: .leading, spacing: 8) {
                 Picker("", selection: $appModel.selectedModelPresetID) {
-                    ForEach(ModelPreset.all) { preset in
+                    ForEach(appModel.availableModelPresets) { preset in
                         Text(preset.label).tag(preset.id)
                     }
                 }

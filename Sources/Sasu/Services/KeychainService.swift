@@ -4,6 +4,7 @@ import Security
 struct KeychainService {
     private let service = "dev.sasu.Sasu"
     private let apiKeyAccount = "OpenAIAPIKey"
+    private let anthropicAPIKeyAccount = "AnthropicAPIKey"
     private let backendAccessTokenAccount = "BackendAccessToken"
 
     func hasAPIKey() -> Bool {
@@ -20,6 +21,22 @@ struct KeychainService {
 
     func deleteAPIKey() throws {
         try deleteSecret(account: apiKeyAccount)
+    }
+
+    func hasAnthropicAPIKey() -> Bool {
+        (try? readAnthropicAPIKey()) != nil
+    }
+
+    func readAnthropicAPIKey() throws -> String? {
+        try readSecret(account: anthropicAPIKeyAccount)
+    }
+
+    func saveAnthropicAPIKey(_ apiKey: String) throws {
+        try saveSecret(apiKey, account: anthropicAPIKeyAccount)
+    }
+
+    func deleteAnthropicAPIKey() throws {
+        try deleteSecret(account: anthropicAPIKeyAccount)
     }
 
     func hasBackendAccessToken() -> Bool {
