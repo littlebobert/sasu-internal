@@ -98,6 +98,23 @@ struct SasuApp: App {
                 .keyboardShortcut(",", modifiers: [.command])
             }
 
+            CommandGroup(replacing: .textEditing) {
+                Button("Find…") {
+                    appModel.findInTranscript()
+                }
+                .keyboardShortcut("f", modifiers: [.command])
+
+                Button("Find Next") {
+                    appModel.findNextInTranscript()
+                }
+                .keyboardShortcut("g", modifiers: [.command])
+
+                Button("Find Previous") {
+                    appModel.findPreviousInTranscript()
+                }
+                .keyboardShortcut("g", modifiers: [.command, .shift])
+            }
+
             CommandMenu("View") {
                 Button("Increase Text Size") {
                     appModel.increaseTranscriptTextSize()

@@ -5,6 +5,10 @@ struct AnswerPanelView: View {
     @EnvironmentObject private var appModel: AppModel
     @State private var shouldAutoScrollTranscript = true
     @State private var isImageDropTargeted = false
+    @State private var isFindVisible = false
+    @State private var findQuery = ""
+    @State private var currentFindMatchIndex = 0
+    @FocusState private var isFindFieldFocused: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -13,6 +17,9 @@ struct AnswerPanelView: View {
             if appModel.isFirstLaunchOnboardingVisible {
                 onboardingBody
             } else {
+                if isFindVisible {
+                    findBar
+                }
                 answerBody
                 Divider()
                 followUp
@@ -20,6 +27,75 @@ struct AnswerPanelView: View {
         }
         .padding(appModel.isFirstLaunchOnboardingVisible ? 14 : 18)
         .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 430 : 420)
+        .onChange(of: appModel.transcriptFindRequest) { request in
+            guard let request else { return }
+            handleTranscriptFindRequest(request)
+        }
+    }
+
+    private var findMatches: [TranscriptFindMatch] {
+        transcriptFindMatches(
+            query: findQuery,
+            messages: appModel.transcriptMessages,
+            streamingResponseText: appModel.streamingResponseText
+        )
+    }
+
+    private var currentFindMatch: TranscriptFindMatch? {
+        guard !findMatches.isEmpty else { return nil }
+        return findMatches[normalizedFindMatchIndex]
+    }
+
+    private var normalizedFindMatchIndex: Int {
+        min(currentFindMatchIndex, max(0, findMatches.count - 1))
+    }
+
+    private var findBar: some View {
+        HStack(spacing: 8) {
+            TextField("Find in Transcript", text: $findQuery)
+                .textFieldStyle(.roundedBorder)
+                .focused($isFindFieldFocused)
+                .onSubmit {
+                    moveToFindMatch(offset: 1)
+                }
+                .onChange(of: findQuery) { _ in
+                    currentFindMatchIndex = 0
+                }
+
+            Text(findMatches.isEmpty ? "0 / 0" : "\(normalizedFindMatchIndex + 1) / \(findMatches.count)")
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(minWidth: 52, alignment: .trailing)
+
+            Button {
+                moveToFindMatch(offset: -1)
+            } label: {
+                Image(systemName: "chevron.up")
+            }
+            .buttonStyle(.borderless)
+            .disabled(findMatches.isEmpty)
+            .help("Previous Match")
+
+            Button {
+                moveToFindMatch(offset: 1)
+            } label: {
+                Image(systemName: "chevron.down")
+            }
+            .buttonStyle(.borderless)
+            .disabled(findMatches.isEmpty)
+            .help("Next Match")
+
+            Button {
+                isFindVisible = false
+            } label: {
+                Image(systemName: "xmark")
+            }
+            .buttonStyle(.borderless)
+            .help("Close Find")
+        }
+        .onExitCommand {
+            isFindVisible = false
+        }
     }
 
     private var header: some View {
@@ -204,7 +280,9 @@ struct AnswerPanelView: View {
                                         )
                                     }
                                 }
-                                .id(message.id)
+                                .padding(6)
+                                .background(findHighlight(isActive: currentFindMatch?.destination == .message(message.id)))
+                                .id(TranscriptFindDestination.message(message.id))
                             }
 
                             if !appModel.streamingResponseText.isEmpty {
@@ -224,7 +302,9 @@ struct AnswerPanelView: View {
                                     )
                                     .fixedSize(horizontal: false, vertical: true)
                                 }
-                                .id("streaming-response")
+                                .padding(6)
+                                .background(findHighlight(isActive: currentFindMatch?.destination == .streamingResponse))
+                                .id(TranscriptFindDestination.streamingResponse)
                             }
 
                             if appModel.shouldOfferPermissionRelaunch, appModel.errorMessage != nil {
@@ -255,6 +335,13 @@ struct AnswerPanelView: View {
                     .onChange(of: appModel.streamingResponseText) { text in
                         guard !text.isEmpty, shouldAutoScrollTranscript else { return }
                         scrollTranscriptToBottomAfterLayoutSettles(proxy, animated: false)
+                    }
+                    .onChange(of: currentFindMatch) { match in
+                        guard isFindVisible, let match else { return }
+                        suspendTranscriptAutoScroll()
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            proxy.scrollTo(match.destination, anchor: .center)
+                        }
                     }
                 }
             }
@@ -311,6 +398,43 @@ struct AnswerPanelView: View {
 
     private func suspendTranscriptAutoScroll() {
         shouldAutoScrollTranscript = false
+    }
+
+    private func handleTranscriptFindRequest(_ request: TranscriptFindRequest) {
+        isFindVisible = true
+        switch request.action {
+        case .show:
+            DispatchQueue.main.async {
+                isFindFieldFocused = true
+            }
+        case .next:
+            moveToFindMatch(offset: 1)
+        case .previous:
+            moveToFindMatch(offset: -1)
+        }
+    }
+
+    private func moveToFindMatch(offset: Int) {
+        guard !findMatches.isEmpty else {
+            DispatchQueue.main.async {
+                isFindFieldFocused = true
+            }
+            return
+        }
+        currentFindMatchIndex = transcriptFindIndex(
+            current: normalizedFindMatchIndex,
+            offset: offset,
+            count: findMatches.count
+        ) ?? 0
+    }
+
+    private func findHighlight(isActive: Bool) -> some View {
+        RoundedRectangle(cornerRadius: 8)
+            .fill(isActive ? Color.yellow.opacity(0.18) : Color.clear)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(isActive ? Color.orange.opacity(0.65) : Color.clear, lineWidth: 1)
+            }
     }
 
     private func highlightSummary(

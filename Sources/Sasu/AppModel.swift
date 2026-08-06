@@ -132,6 +132,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var streamingResponseText = ""
     @Published var followUpText = ""
     @Published private(set) var querySelectionNonce = 0
+    @Published private(set) var transcriptFindRequest: TranscriptFindRequest?
 
     var transcriptFontSize: CGFloat {
         CGFloat(transcriptTextSize)
@@ -480,6 +481,26 @@ final class AppModel: ObservableObject {
 
     func showTranscriptWindow() {
         answerWindowController.show(appModel: self)
+    }
+
+    func findInTranscript() {
+        requestTranscriptFind(.show)
+    }
+
+    func findNextInTranscript() {
+        requestTranscriptFind(.next)
+    }
+
+    func findPreviousInTranscript() {
+        requestTranscriptFind(.previous)
+    }
+
+    private func requestTranscriptFind(_ action: TranscriptFindAction) {
+        showTranscriptWindow()
+        transcriptFindRequest = TranscriptFindRequest(
+            sequence: (transcriptFindRequest?.sequence ?? 0) + 1,
+            action: action
+        )
     }
 
     private var shouldShowFirstLaunchOnboarding: Bool {
