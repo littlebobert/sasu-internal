@@ -5,12 +5,16 @@ struct MarkdownText: View {
     let markdown: String
     var fontSize: CGFloat = NSFont.systemFontSize
     var onUserScroll: (() -> Void)?
+    var findQuery = ""
+    var selectedFindOccurrence: Int?
 
     var body: some View {
         MarkdownTextView(
             markdown: markdown,
             fontSize: fontSize,
-            onUserScroll: onUserScroll
+            onUserScroll: onUserScroll,
+            findQuery: findQuery,
+            selectedFindOccurrence: selectedFindOccurrence
         )
     }
 }
@@ -19,6 +23,8 @@ private struct MarkdownTextView: NSViewRepresentable {
     let markdown: String
     let fontSize: CGFloat
     let onUserScroll: (() -> Void)?
+    let findQuery: String
+    let selectedFindOccurrence: Int?
 
     func makeCoordinator() -> Coordinator {
         Coordinator()
@@ -33,7 +39,13 @@ private struct MarkdownTextView: NSViewRepresentable {
 
     func updateNSView(_ textView: LinkTextView, context: Context) {
         textView.onUserScroll = onUserScroll
-        textView.textStorage?.setAttributedString(Self.attributedMarkdown(for: markdown, fontSize: fontSize))
+        let attributedString = Self.attributedMarkdown(for: markdown, fontSize: fontSize)
+        applyTranscriptFindHighlight(
+            to: attributedString,
+            query: findQuery,
+            selectedOccurrence: selectedFindOccurrence
+        )
+        textView.textStorage?.setAttributedString(attributedString)
         textView.invalidateIntrinsicContentSize()
     }
 
@@ -49,7 +61,7 @@ private struct MarkdownTextView: NSViewRepresentable {
         )
     }
 
-    private static func attributedMarkdown(for markdown: String, fontSize: CGFloat) -> NSAttributedString {
+    private static func attributedMarkdown(for markdown: String, fontSize: CGFloat) -> NSMutableAttributedString {
         let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
         let attributedString: AttributedString
         do {
@@ -125,6 +137,33 @@ private struct MarkdownTextView: NSViewRepresentable {
             return nil
         }
     }
+}
+
+func applyTranscriptFindHighlight(
+    to attributedString: NSMutableAttributedString,
+    query: String,
+    selectedOccurrence: Int?
+) {
+    for (occurrence, range) in transcriptFindRanges(in: attributedString.string, query: query).enumerated() {
+        let color = occurrence == selectedOccurrence
+            ? NSColor.systemOrange.withAlphaComponent(0.65)
+            : NSColor.systemYellow.withAlphaComponent(0.4)
+        attributedString.addAttribute(.backgroundColor, value: color, range: range)
+    }
+}
+
+func transcriptHighlightedText(
+    _ text: String,
+    query: String,
+    selectedOccurrence: Int?
+) -> Text {
+    let attributedString = NSMutableAttributedString(string: text)
+    applyTranscriptFindHighlight(
+        to: attributedString,
+        query: query,
+        selectedOccurrence: selectedOccurrence
+    )
+    return Text(AttributedString(attributedString))
 }
 
 private final class LinkTextView: NSTextView {

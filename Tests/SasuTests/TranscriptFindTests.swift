@@ -17,10 +17,10 @@ final class TranscriptFindTests: XCTestCase {
         )
 
         XCTAssertEqual(matches, [
-            TranscriptFindMatch(destination: .message(firstID), occurrence: 0),
-            TranscriptFindMatch(destination: .message(firstID), occurrence: 1),
-            TranscriptFindMatch(destination: .message(secondID), occurrence: 0),
-            TranscriptFindMatch(destination: .streamingResponse, occurrence: 0)
+            TranscriptFindMatch(target: .messageText(firstID), occurrence: 0),
+            TranscriptFindMatch(target: .messageText(firstID), occurrence: 1),
+            TranscriptFindMatch(target: .messageText(secondID), occurrence: 0),
+            TranscriptFindMatch(target: .streamingResponse, occurrence: 0)
         ])
     }
 
@@ -45,7 +45,31 @@ final class TranscriptFindTests: XCTestCase {
 
         XCTAssertEqual(
             transcriptFindMatches(query: "next page", messages: [message], streamingResponseText: ""),
-            [TranscriptFindMatch(destination: .message(messageID), occurrence: 0)]
+            [TranscriptFindMatch(target: .suggestionReason(messageID), occurrence: 0)]
+        )
+    }
+
+    func testFindUsesRenderedMarkdownText() {
+        let messageID = UUID()
+        let message = ChatTranscriptMessage(
+            id: messageID,
+            role: .assistant,
+            text: "Use **Continue** next."
+        )
+
+        XCTAssertEqual(
+            transcriptFindMatches(query: "Continue", messages: [message], streamingResponseText: ""),
+            [TranscriptFindMatch(target: .messageText(messageID), occurrence: 0)]
+        )
+        XCTAssertTrue(
+            transcriptFindMatches(query: "**Continue**", messages: [message], streamingResponseText: "").isEmpty
+        )
+    }
+
+    func testFindRangesIdentifyExactOccurrences() {
+        XCTAssertEqual(
+            transcriptFindRanges(in: "Cafe café", query: "café"),
+            [NSRange(location: 0, length: 4), NSRange(location: 5, length: 4)]
         )
     }
 

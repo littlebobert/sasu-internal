@@ -270,18 +270,19 @@ struct AnswerPanelView: View {
                                     TranscriptMessageView(
                                         message: message,
                                         availableWidth: max(300, geometry.size.width - 32),
-                                        onUserScroll: suspendTranscriptAutoScroll
+                                        onUserScroll: suspendTranscriptAutoScroll,
+                                        findQuery: activeFindQuery,
+                                        selectedFindMatch: currentFindMatch
                                     )
 
                                     if let highlight = message.actionSuggestion {
                                         highlightSummary(
                                             highlight,
+                                            messageID: message.id,
                                             isCurrentSuggestion: highlight == appModel.currentHighlightSuggestion
                                         )
                                     }
                                 }
-                                .padding(6)
-                                .background(findHighlight(isActive: currentFindMatch?.destination == .message(message.id)))
                                 .id(TranscriptFindDestination.message(message.id))
                             }
 
@@ -294,7 +295,9 @@ struct AnswerPanelView: View {
                                     MarkdownText(
                                         markdown: appModel.streamingResponseText,
                                         fontSize: appModel.transcriptFontSize,
-                                        onUserScroll: suspendTranscriptAutoScroll
+                                        onUserScroll: suspendTranscriptAutoScroll,
+                                        findQuery: activeFindQuery,
+                                        selectedFindOccurrence: selectedOccurrence(for: .streamingResponse)
                                     )
                                     .frame(
                                         width: max(300, geometry.size.width - 32),
@@ -302,8 +305,6 @@ struct AnswerPanelView: View {
                                     )
                                     .fixedSize(horizontal: false, vertical: true)
                                 }
-                                .padding(6)
-                                .background(findHighlight(isActive: currentFindMatch?.destination == .streamingResponse))
                                 .id(TranscriptFindDestination.streamingResponse)
                             }
 
@@ -320,8 +321,9 @@ struct AnswerPanelView: View {
                         .padding(.trailing, 8)
                     }
                     .onChange(of: appModel.transcriptMessages.count) { _ in
-                        guard shouldAutoScrollTranscript else { return }
-                        scrollTranscriptToBottomAfterLayoutSettles(proxy)
+                        guard shouldAutoScrollTranscript,
+                              let messageID = appModel.transcriptMessages.last?.id else { return }
+                        scrollTranscriptToMessageAfterLayoutSettles(messageID, proxy: proxy)
                     }
                     .onChange(of: appModel.isRequestInFlight) { isRequestInFlight in
                         guard isRequestInFlight else { return }
@@ -396,6 +398,22 @@ struct AnswerPanelView: View {
         }
     }
 
+    private func scrollTranscriptToMessageAfterLayoutSettles(
+        _ messageID: UUID,
+        proxy: ScrollViewProxy
+    ) {
+        let scroll = {
+            proxy.scrollTo(TranscriptFindDestination.message(messageID), anchor: .bottom)
+        }
+
+        for delay in [0.0, 0.05, 0.2, 0.5] {
+            DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
+                guard shouldAutoScrollTranscript else { return }
+                withAnimation(.easeOut(duration: 0.15), scroll)
+            }
+        }
+    }
+
     private func suspendTranscriptAutoScroll() {
         shouldAutoScrollTranscript = false
     }
@@ -428,22 +446,28 @@ struct AnswerPanelView: View {
         ) ?? 0
     }
 
-    private func findHighlight(isActive: Bool) -> some View {
-        RoundedRectangle(cornerRadius: 8)
-            .fill(isActive ? Color.yellow.opacity(0.18) : Color.clear)
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .stroke(isActive ? Color.orange.opacity(0.65) : Color.clear, lineWidth: 1)
-            }
+    private var activeFindQuery: String {
+        isFindVisible ? findQuery : ""
+    }
+
+    private func selectedOccurrence(for target: TranscriptFindTarget) -> Int? {
+        guard currentFindMatch?.target == target else { return nil }
+        return currentFindMatch?.occurrence
     }
 
     private func highlightSummary(
         _ highlight: HighlightSuggestion,
+        messageID: UUID,
         isCurrentSuggestion: Bool
     ) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let label = String(localized: "Suggested highlight: \(highlight.label)")
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("Suggested highlight: \(highlight.label)")
+                transcriptHighlightedText(
+                    label,
+                    query: activeFindQuery,
+                    selectedOccurrence: selectedOccurrence(for: .suggestionLabel(messageID))
+                )
                     .font(.caption.bold())
 
                 Spacer()
@@ -464,7 +488,11 @@ struct AnswerPanelView: View {
             }
 
             if let reason = highlight.reason, !reason.isEmpty {
-                Text(reason)
+                transcriptHighlightedText(
+                    reason,
+                    query: activeFindQuery,
+                    selectedOccurrence: selectedOccurrence(for: .suggestionReason(messageID))
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -542,6 +570,8 @@ private struct TranscriptMessageView: View {
     let message: ChatTranscriptMessage
     let availableWidth: CGFloat
     let onUserScroll: () -> Void
+    let findQuery: String
+    let selectedFindMatch: TranscriptFindMatch?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -567,7 +597,11 @@ private struct TranscriptMessageView: View {
                         }
                         .help("Double-click to open screenshot")
 
-                    Text(message.text)
+                    transcriptHighlightedText(
+                        message.text,
+                        query: findQuery,
+                        selectedOccurrence: selectedOccurrence(for: .messageText(message.id))
+                    )
                         .font(.caption)
                         .foregroundStyle(.secondary)
                         .textSelection(.enabled)
@@ -589,7 +623,9 @@ private struct TranscriptMessageView: View {
                 MarkdownText(
                     markdown: message.text,
                     fontSize: appModel.transcriptFontSize,
-                    onUserScroll: onUserScroll
+                    onUserScroll: onUserScroll,
+                    findQuery: findQuery,
+                    selectedFindOccurrence: selectedOccurrence(for: .messageText(message.id))
                 )
                     .frame(width: availableWidth, alignment: .leading)
                     .fixedSize(horizontal: false, vertical: true)
@@ -602,15 +638,35 @@ private struct TranscriptMessageView: View {
     private func sourceTextView(_ text: String, label: String) -> some View {
         if let sourceReadings = usefulSourceReadings {
             VStack(alignment: .leading, spacing: 6) {
-                Text(label)
+                transcriptHighlightedText(
+                    label,
+                    query: findQuery,
+                    selectedOccurrence: selectedOccurrence(for: .sourceLabel(message.id))
+                )
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
-                RubyTextView(segments: sourceReadings, fontSize: appModel.transcriptFontSize)
+                RubyTextView(
+                    segments: sourceReadings,
+                    fontSize: appModel.transcriptFontSize,
+                    findQuery: findQuery,
+                    selectedFindOccurrence: selectedOccurrence(for: .messageText(message.id))
+                )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {
-            (Text("\(label) ") + Text(text))
+            (
+                transcriptHighlightedText(
+                    "\(label) ",
+                    query: findQuery,
+                    selectedOccurrence: selectedOccurrence(for: .sourceLabel(message.id))
+                )
+                + transcriptHighlightedText(
+                    text,
+                    query: findQuery,
+                    selectedOccurrence: selectedOccurrence(for: .messageText(message.id))
+                )
+            )
                 .font(.system(size: appModel.transcriptFontSize))
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .textSelection(.enabled)
@@ -625,6 +681,11 @@ private struct TranscriptMessageView: View {
         }
 
         return sourceReadings
+    }
+
+    private func selectedOccurrence(for target: TranscriptFindTarget) -> Int? {
+        guard selectedFindMatch?.target == target else { return nil }
+        return selectedFindMatch?.occurrence
     }
 
     private func safariPageIncludedBadge(_ context: BrowserPageContext) -> some View {

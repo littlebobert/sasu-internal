@@ -16,9 +16,30 @@ enum TranscriptFindDestination: Hashable {
     case streamingResponse
 }
 
+enum TranscriptFindTarget: Hashable {
+    case messageText(UUID)
+    case sourceLabel(UUID)
+    case suggestionLabel(UUID)
+    case suggestionReason(UUID)
+    case streamingResponse
+
+    var destination: TranscriptFindDestination {
+        switch self {
+        case let .messageText(id), let .sourceLabel(id), let .suggestionLabel(id), let .suggestionReason(id):
+            return .message(id)
+        case .streamingResponse:
+            return .streamingResponse
+        }
+    }
+}
+
 struct TranscriptFindMatch: Equatable {
-    let destination: TranscriptFindDestination
+    let target: TranscriptFindTarget
     let occurrence: Int
+
+    var destination: TranscriptFindDestination {
+        target.destination
+    }
 }
 
 func transcriptFindMatches(
@@ -30,25 +51,46 @@ func transcriptFindMatches(
 
     var matches: [TranscriptFindMatch] = []
     for message in messages {
-        var searchableText = message.localizedTranscriptText
-        if let suggestion = message.actionSuggestion {
-            searchableText += "\n\(suggestion.label)"
-            if let reason = suggestion.reason {
-                searchableText += "\n\(reason)"
-            }
+        if let sourceKind = message.sourceKind {
+            appendTranscriptFindMatches(
+                in: sourceKind.displayLabel,
+                query: query,
+                target: .sourceLabel(message.id),
+                to: &matches
+            )
         }
+        let messageText = message.sourceKind == nil && message.imageData == nil
+            ? transcriptRenderedMarkdownText(message.text)
+            : message.text
         appendTranscriptFindMatches(
-            in: searchableText,
+            in: messageText,
             query: query,
-            destination: .message(message.id),
+            target: .messageText(message.id),
             to: &matches
         )
+
+        if let suggestion = message.actionSuggestion {
+            appendTranscriptFindMatches(
+                in: String(localized: "Suggested highlight: \(suggestion.label)"),
+                query: query,
+                target: .suggestionLabel(message.id),
+                to: &matches
+            )
+            if let reason = suggestion.reason {
+                appendTranscriptFindMatches(
+                    in: reason,
+                    query: query,
+                    target: .suggestionReason(message.id),
+                    to: &matches
+                )
+            }
+        }
     }
 
     appendTranscriptFindMatches(
-        in: streamingResponseText,
+        in: transcriptRenderedMarkdownText(streamingResponseText),
         query: query,
-        destination: .streamingResponse,
+        target: .streamingResponse,
         to: &matches
     )
     return matches
@@ -59,23 +101,41 @@ func transcriptFindIndex(current: Int, offset: Int, count: Int) -> Int? {
     return ((current + offset) % count + count) % count
 }
 
-private func appendTranscriptFindMatches(
-    in text: String,
-    query: String,
-    destination: TranscriptFindDestination,
-    to matches: inout [TranscriptFindMatch]
-) {
-    var searchRange = text.startIndex..<text.endIndex
-    var occurrence = 0
+func transcriptFindRanges(in text: String, query: String) -> [NSRange] {
+    guard !query.isEmpty else { return [] }
 
+    var ranges: [NSRange] = []
+    var searchRange = text.startIndex..<text.endIndex
     while let range = text.range(
         of: query,
         options: [.caseInsensitive, .diacriticInsensitive],
         range: searchRange,
         locale: .current
     ) {
-        matches.append(TranscriptFindMatch(destination: destination, occurrence: occurrence))
-        occurrence += 1
+        ranges.append(NSRange(range, in: text))
         searchRange = range.upperBound..<text.endIndex
+    }
+    return ranges
+}
+
+func transcriptRenderedMarkdownText(_ markdown: String) -> String {
+    let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+    guard let attributedString = try? AttributedString(
+        markdown: normalizedMarkdown,
+        options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+    ) else {
+        return normalizedMarkdown
+    }
+    return String(attributedString.characters)
+}
+
+private func appendTranscriptFindMatches(
+    in text: String,
+    query: String,
+    target: TranscriptFindTarget,
+    to matches: inout [TranscriptFindMatch]
+) {
+    for occurrence in transcriptFindRanges(in: text, query: query).indices {
+        matches.append(TranscriptFindMatch(target: target, occurrence: occurrence))
     }
 }

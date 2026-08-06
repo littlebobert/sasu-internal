@@ -4,10 +4,18 @@ import SwiftUI
 struct RubyTextView: View {
     let segments: [RubyTextSegment]
     var fontSize: CGFloat = 13
+    var findQuery = ""
+    var selectedFindOccurrence: Int?
     @State private var height: CGFloat = 44
 
     var body: some View {
-        RubyCoreTextView(segments: segments, fontSize: fontSize, height: $height)
+        RubyCoreTextView(
+            segments: segments,
+            fontSize: fontSize,
+            findQuery: findQuery,
+            selectedFindOccurrence: selectedFindOccurrence,
+            height: $height
+        )
             .frame(height: height)
             .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -16,6 +24,8 @@ struct RubyTextView: View {
 private struct RubyCoreTextView: NSViewRepresentable {
     let segments: [RubyTextSegment]
     let fontSize: CGFloat
+    let findQuery: String
+    let selectedFindOccurrence: Int?
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -32,6 +42,11 @@ private struct RubyCoreTextView: NSViewRepresentable {
 
     func updateNSView(_ view: CoreTextRubyDrawingView, context: Context) {
         let attributedString = Self.attributedString(for: segments, fontSize: fontSize)
+        applyTranscriptFindHighlight(
+            to: attributedString,
+            query: findQuery,
+            selectedOccurrence: selectedFindOccurrence
+        )
         guard context.coordinator.currentAttributedString != attributedString else {
             view.updateMeasuredHeight()
             return
@@ -41,7 +56,7 @@ private struct RubyCoreTextView: NSViewRepresentable {
         view.attributedString = attributedString
     }
 
-    private static func attributedString(for segments: [RubyTextSegment], fontSize: CGFloat) -> NSAttributedString {
+    private static func attributedString(for segments: [RubyTextSegment], fontSize: CGFloat) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = fontSize * (12.0 / 13.0)
