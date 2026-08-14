@@ -26,10 +26,32 @@ struct AnswerPanelView: View {
             }
         }
         .padding(appModel.isFirstLaunchOnboardingVisible ? 14 : 18)
-        .frame(minWidth: 420, minHeight: appModel.isFirstLaunchOnboardingVisible ? 430 : 420)
+        .frame(
+            minWidth: 420,
+            maxWidth: .infinity,
+            minHeight: appModel.isFirstLaunchOnboardingVisible ? 430 : 420,
+            maxHeight: .infinity
+        )
+        .contentShape(Rectangle())
         .onChange(of: appModel.transcriptFindRequest) { request in
             guard let request else { return }
             handleTranscriptFindRequest(request)
+        }
+        .onDrop(of: [.image, .fileURL], isTargeted: $isImageDropTargeted) { providers in
+            appModel.handleDroppedImageProviders(providers)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 10)
+                .strokeBorder(
+                    isImageDropTargeted ? Color.accentColor : Color.clear,
+                    lineWidth: 2
+                )
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(isImageDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
+                )
+                .padding(4)
+                .allowsHitTesting(false)
         }
     }
 
@@ -354,7 +376,7 @@ struct AnswerPanelView: View {
                 Text("On your command, Sasu will capture your screen, then wait for your question before sending anything.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
-                Text("You can also drop an image onto the question box to translate or explain it.")
+                Text("You can also drop an image anywhere in this window to translate or explain it.")
                     .font(.callout)
                     .foregroundStyle(.secondary)
             }
@@ -546,21 +568,6 @@ struct AnswerPanelView: View {
                 }
                 .disabled(appModel.isRequestInFlight || appModel.followUpText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-        }
-        .padding(8)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .strokeBorder(
-                    isImageDropTargeted ? Color.accentColor : Color.clear,
-                    lineWidth: 2
-                )
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(isImageDropTargeted ? Color.accentColor.opacity(0.08) : Color.clear)
-                )
-        )
-        .onDrop(of: [.image, .fileURL], isTargeted: $isImageDropTargeted) { providers in
-            appModel.handleDroppedImageProviders(providers)
         }
     }
 }

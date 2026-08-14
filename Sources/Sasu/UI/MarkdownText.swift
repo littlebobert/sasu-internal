@@ -46,6 +46,7 @@ private struct MarkdownTextView: NSViewRepresentable {
             selectedOccurrence: selectedFindOccurrence
         )
         textView.textStorage?.setAttributedString(attributedString)
+        textView.unregisterDraggedTypes()
         textView.invalidateIntrinsicContentSize()
     }
 
@@ -283,6 +284,9 @@ private final class LinkTextView: NSTextView {
             .foregroundColor: NSColor.linkColor,
             .underlineStyle: NSUnderlineStyle.single.rawValue
         ]
+        // Let the transcript window handle image drops instead of
+        // NSTextView claiming the drag over selectable markdown.
+        unregisterDraggedTypes()
     }
 
     private func updateCursor(for event: NSEvent) {
