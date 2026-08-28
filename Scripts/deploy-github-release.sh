@@ -647,6 +647,7 @@ sync_landing_repo
 
 echo "Updating landing page: $LANDING_PAGE"
 python3 - "$LANDING_PAGE" "$VERSION" "$notes_pair_json" <<'PY'
+import datetime
 import html
 import json
 import re
@@ -718,12 +719,27 @@ items_html = "\n".join(
         zh_hans_items,
     )
 )
+english_months = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December",
+]
+today = datetime.date.today()
+release_date_en = f"{english_months[today.month - 1]} {today.day}, {today.year}"
+release_date_cjk = f"{today.year}年{today.month}月{today.day}日"
+
 current_block = f"""      <h3
         data-label-en="{version}"
         data-label-ja="{version}"
         data-label-zh-hant="{version}"
         data-label-zh-hans="{version}"
       >{version}</h3>
+      <span
+        class="release-date"
+        data-label-en="{release_date_en}"
+        data-label-ja="{release_date_cjk}"
+        data-label-zh-hant="{release_date_cjk}"
+        data-label-zh-hans="{release_date_cjk}"
+      >{release_date_en}</span>
       <ul>
 {items_html}
       </ul>
@@ -736,7 +752,9 @@ existing_current_pattern = re.compile(
     r'data-label-ja="' + re.escape(version) + r'(?:（現在）)?"'
     r'(?:\s+data-label-zh-hant="' + re.escape(version) + r'")?'
     r'(?:\s+data-label-zh-hans="' + re.escape(version) + r'")?'
-    r'\s*>.*?</h3>\s*<ul>.*?</ul>\s*',
+    r'\s*>.*?</h3>\s*'
+    r'(?:<span\s+class="release-date".*?</span>\s*)?'
+    r'<ul>.*?</ul>\s*',
     re.S,
 )
 release_notes_details_open = (
