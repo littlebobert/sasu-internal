@@ -4,6 +4,7 @@ import AppKit
 final class CursorProgressOverlayController {
     private var panel: NSPanel?
     private var trackingTimer: Timer?
+    private var currentStatus: String?
 
     private var panelSize = NSSize(width: 110, height: 32)
     private let cursorOffset = NSPoint(x: 16, y: -18)
@@ -14,8 +15,7 @@ final class CursorProgressOverlayController {
             panel = makePanel()
         }
 
-        resizePanel(toFit: status)
-        (panel?.contentView as? CursorProgressContentView)?.update(status: status)
+        updateStatusIfNeeded(status)
         updatePosition()
         panel?.alphaValue = 0
         panel?.orderFrontRegardless()
@@ -29,9 +29,7 @@ final class CursorProgressOverlayController {
     }
 
     func update(status: String) {
-        resizePanel(toFit: status)
-        (panel?.contentView as? CursorProgressContentView)?.update(status: status)
-        updatePosition()
+        updateStatusIfNeeded(status)
     }
 
     func hide() {
@@ -97,15 +95,26 @@ final class CursorProgressOverlayController {
             frame.origin.y = min(max(frame.origin.y, screen.frame.minY + 4), screen.frame.maxY - frame.height - 4)
         }
 
-        panel?.setFrame(frame, display: true)
+        guard let panel, panel.frame != frame else { return }
+        panel.setFrame(frame, display: false)
+    }
+
+    private func updateStatusIfNeeded(_ status: String) {
+        guard status != currentStatus else { return }
+
+        currentStatus = status
+        resizePanel(toFit: status)
+        (panel?.contentView as? CursorProgressContentView)?.update(status: status)
     }
 
     private func resizePanel(toFit status: String) {
         let textWidth = ceil(
             (status as NSString).size(withAttributes: [.font: statusFont]).width
         )
-        panelSize.width = min(max(textWidth + 42, 88), 260)
+        let newWidth = min(max(textWidth + 42, 88), 260)
+        guard newWidth != panelSize.width else { return }
 
+        panelSize.width = newWidth
         guard let panel else { return }
         var frame = panel.frame
         frame.size = panelSize

@@ -205,6 +205,10 @@ final class AppModel: ObservableObject {
     private var translateAndReplaceHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
+    private var isReceivingStreamedAnswer = false
+    private lazy var streamingUpdateCoalescer = StreamingUpdateCoalescer<String> { [weak self] partialAnswer in
+        self?.streamingResponseText = partialAnswer
+    }
     private var highlightAutoHideTask: Task<Void, Never>?
     private var highlightClickMonitorStartTask: Task<Void, Never>?
     private var highlightGlobalClickMonitor: Any?
@@ -1313,7 +1317,7 @@ final class AppModel: ObservableObject {
         currentRequestTask?.cancel()
         currentRequestTask = nil
         isRequestInFlight = false
-        streamingResponseText = ""
+        resetStreamingResponse()
         cursorProgressOverlayController.hide()
         statusMessage = String(localized: "Request stopped.")
         errorMessage = nil
@@ -2204,7 +2208,7 @@ final class AppModel: ObservableObject {
 
     private func runTranslateClipboard() async {
         isRequestInFlight = true
-        streamingResponseText = ""
+        resetStreamingResponse()
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         currentHighlightSuggestion = nil
@@ -2271,7 +2275,7 @@ final class AppModel: ObservableObject {
         }
 
         isRequestInFlight = false
-        streamingResponseText = ""
+        resetStreamingResponse()
         cursorProgressOverlayController.hide()
         currentRequestTask = nil
         let shouldActivateAnswerWindow = NSApp.isActive
@@ -2283,7 +2287,7 @@ final class AppModel: ObservableObject {
 
     private func runTranslateSelectedText(fallbackToClipboard: Bool = false) async {
         isRequestInFlight = true
-        streamingResponseText = ""
+        resetStreamingResponse()
         errorMessage = nil
         currentHighlightSuggestion = nil
         hideHighlight()
@@ -2371,7 +2375,7 @@ final class AppModel: ObservableObject {
         }
 
         isRequestInFlight = false
-        streamingResponseText = ""
+        resetStreamingResponse()
         cursorProgressOverlayController.hide()
         currentRequestTask = nil
         let shouldActivateAnswerWindow = NSApp.isActive
@@ -2481,7 +2485,7 @@ final class AppModel: ObservableObject {
         mode: CaptureRequestMode = .question
     ) async {
         isRequestInFlight = true
-        streamingResponseText = ""
+        resetStreamingResponse()
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         statusMessage = mode == .visibleSelectionTranslation
@@ -2587,7 +2591,7 @@ final class AppModel: ObservableObject {
         }
 
         isRequestInFlight = false
-        streamingResponseText = ""
+        resetStreamingResponse()
         cursorProgressOverlayController.hide()
         currentRequestTask = nil
         let shouldActivateAnswerWindow = NSApp.isActive
@@ -2781,9 +2785,19 @@ final class AppModel: ObservableObject {
     }
 
     private func receiveStreamedAnswer(_ partialAnswer: String) {
-        streamingResponseText = partialAnswer
-        statusMessage = String(localized: "Answering…")
-        cursorProgressOverlayController.update(status: String(localized: "Answering…"))
+        if !isReceivingStreamedAnswer {
+            isReceivingStreamedAnswer = true
+            statusMessage = String(localized: "Answering…")
+            cursorProgressOverlayController.update(status: String(localized: "Answering…"))
+        }
+
+        streamingUpdateCoalescer.submit(partialAnswer)
+    }
+
+    private func resetStreamingResponse() {
+        streamingUpdateCoalescer.cancel()
+        isReceivingStreamedAnswer = false
+        streamingResponseText = ""
     }
 
     private func requestUserAttentionIfNeeded() {
