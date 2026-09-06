@@ -160,7 +160,7 @@ private final class SubmitTextView: NSTextView {
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard imageData(from: sender.draggingPasteboard) != nil else {
+        guard ImagePasteboardReader.imageData(from: sender.draggingPasteboard) != nil else {
             onImageDropTargeted?(false)
             return []
         }
@@ -169,7 +169,7 @@ private final class SubmitTextView: NSTextView {
     }
 
     override func draggingUpdated(_ sender: NSDraggingInfo) -> NSDragOperation {
-        guard imageData(from: sender.draggingPasteboard) != nil else {
+        guard ImagePasteboardReader.imageData(from: sender.draggingPasteboard) != nil else {
             onImageDropTargeted?(false)
             return []
         }
@@ -186,12 +186,12 @@ private final class SubmitTextView: NSTextView {
     }
 
     override func prepareForDragOperation(_ sender: NSDraggingInfo) -> Bool {
-        imageData(from: sender.draggingPasteboard) != nil
+        ImagePasteboardReader.imageData(from: sender.draggingPasteboard) != nil
     }
 
     override func performDragOperation(_ sender: NSDraggingInfo) -> Bool {
         onImageDropTargeted?(false)
-        guard let data = imageData(from: sender.draggingPasteboard) else {
+        guard let data = ImagePasteboardReader.imageData(from: sender.draggingPasteboard) else {
             return false
         }
         onImageDrop?(data)
@@ -200,51 +200,10 @@ private final class SubmitTextView: NSTextView {
 
     override func paste(_ sender: Any?) {
         let pasteboard = NSPasteboard.general
-        if let data = imageData(from: pasteboard) {
+        if let data = ImagePasteboardReader.imageData(from: pasteboard) {
             onImageDrop?(data)
             return
         }
         super.paste(sender)
-    }
-
-    private func imageData(from pasteboard: NSPasteboard) -> Data? {
-        if let urls = pasteboard.readObjects(forClasses: [NSURL.self], options: [
-            .urlReadingFileURLsOnly: true
-        ]) as? [URL] {
-            for url in urls {
-                let accessed = url.startAccessingSecurityScopedResource()
-                defer {
-                    if accessed {
-                        url.stopAccessingSecurityScopedResource()
-                    }
-                }
-                if let data = try? Data(contentsOf: url), NSImage(data: data) != nil {
-                    return data
-                }
-            }
-        }
-
-        let typeCandidates: [NSPasteboard.PasteboardType] = [
-            .png,
-            .tiff,
-            NSPasteboard.PasteboardType(UTType.jpeg.identifier),
-            NSPasteboard.PasteboardType(UTType.webP.identifier),
-            NSPasteboard.PasteboardType(UTType.heic.identifier),
-            NSPasteboard.PasteboardType(UTType.image.identifier)
-        ]
-        for type in typeCandidates {
-            if let data = pasteboard.data(forType: type), NSImage(data: data) != nil {
-                return data
-            }
-        }
-
-        if let image = NSImage(pasteboard: pasteboard),
-           let tiff = image.tiffRepresentation,
-           let bitmap = NSBitmapImageRep(data: tiff),
-           let pngData = bitmap.representation(using: .png, properties: [:]) {
-            return pngData
-        }
-
-        return nil
     }
 }

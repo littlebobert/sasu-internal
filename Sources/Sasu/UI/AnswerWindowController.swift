@@ -149,7 +149,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     }
 
     private func makeWindow(appModel: AppModel) -> NSPanel {
-        let panel = NSPanel(
+        let panel = ImagePastePanel(
             contentRect: initialFrame(),
             styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
             backing: .buffered,
@@ -164,6 +164,9 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         panel.hidesOnDeactivate = false
         panel.isExcludedFromWindowsMenu = false
         panel.isReleasedWhenClosed = false
+        panel.onPasteImage = { [weak appModel] imageData in
+            appModel?.handleDroppedImageData(imageData) == true
+        }
         panel.toolbar = makeToolbar()
         panel.toolbar?.displayMode = .labelOnly
         panel.toolbar?.sizeMode = .regular
@@ -349,4 +352,22 @@ private extension NSToolbarItem.Identifier {
     static let copyAnswer = NSToolbarItem.Identifier("SasuCopyAnswer")
     static let clearTranscript = NSToolbarItem.Identifier("SasuClearTranscript")
     static let settings = NSToolbarItem.Identifier("SasuSettings")
+}
+
+private final class ImagePastePanel: NSPanel {
+    var onPasteImage: ((Data) -> Bool)?
+
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        let relevantModifiers = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+        let isPasteShortcut = relevantModifiers == .command
+            && event.charactersIgnoringModifiers?.lowercased() == "v"
+
+        if isPasteShortcut,
+           let imageData = ImagePasteboardReader.imageData(from: .general),
+           onPasteImage?(imageData) == true {
+            return true
+        }
+
+        return super.performKeyEquivalent(with: event)
+    }
 }

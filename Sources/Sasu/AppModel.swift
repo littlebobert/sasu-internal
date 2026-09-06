@@ -1291,12 +1291,13 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    func handleDroppedImageData(_ data: Data) {
+    @discardableResult
+    func handleDroppedImageData(_ data: Data) -> Bool {
         guard !isFirstLaunchOnboardingVisible else {
             statusMessage = String(localized: "Click Sasuを始める in the example to enable Screen Recording first.")
-            return
+            return false
         }
-        guard !isRequestInFlight else { return }
+        guard !isRequestInFlight else { return false }
 
         isRequestInFlight = true
         errorMessage = nil
@@ -1304,6 +1305,7 @@ final class AppModel: ObservableObject {
         currentRequestTask = Task {
             await prepareDroppedImageData(data)
         }
+        return true
     }
 
     private static func canLoadImage(from provider: NSItemProvider) -> Bool {
