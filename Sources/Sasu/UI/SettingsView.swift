@@ -118,6 +118,11 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+
+                Toggle(
+                    "Include original text during Translate & Replace",
+                    isOn: $appModel.includeOriginalTextDuringTranslateAndReplace
+                )
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)

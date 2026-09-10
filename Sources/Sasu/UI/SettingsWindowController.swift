@@ -61,7 +61,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
         let visibleFrame = (NSScreen.main ?? NSScreen.screens.first)?.visibleFrame
             ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
         let width = min(560, max(480, visibleFrame.width - 80))
-        let height = min(780, max(520, visibleFrame.height - 80))
+        let height = min(510, max(420, visibleFrame.height - 80))
 
         return NSSize(width: width, height: height)
     }

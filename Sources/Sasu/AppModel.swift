@@ -46,6 +46,14 @@ final class AppModel: ObservableObject {
     @Published var translationSourceLanguage: TranslationSourceLanguage {
         didSet { defaults.set(translationSourceLanguage.rawValue, forKey: Self.translationSourceLanguageKey) }
     }
+    @Published var includeOriginalTextDuringTranslateAndReplace: Bool {
+        didSet {
+            defaults.set(
+                includeOriginalTextDuringTranslateAndReplace,
+                forKey: Self.includeOriginalTextDuringTranslateAndReplaceKey
+            )
+        }
+    }
     @Published var transcriptTextSize: Double {
         didSet {
             let clampedSize = Self.clampedTranscriptTextSize(transcriptTextSize)
@@ -147,6 +155,8 @@ final class AppModel: ObservableObject {
     private static let imageDetailKey = "imageDetail"
     private static let automaticallyIncludeSafariPageContentKey = "automaticallyIncludeSafariPageContent"
     private static let translationSourceLanguageKey = "translationSourceLanguage"
+    private static let includeOriginalTextDuringTranslateAndReplaceKey =
+        "includeOriginalTextDuringTranslateAndReplace"
     private static let transcriptTextSizeKey = "transcriptTextSize"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let safariPageSendConfirmationCharacterThreshold = 8_000
@@ -297,6 +307,9 @@ final class AppModel: ObservableObject {
             ?? (availableTranslationSourceLanguages.contains(.japanese)
                 ? .japanese
                 : availableTranslationSourceLanguages[0])
+        self.includeOriginalTextDuringTranslateAndReplace = defaults.bool(
+            forKey: Self.includeOriginalTextDuringTranslateAndReplaceKey
+        )
         if defaults.object(forKey: Self.transcriptTextSizeKey) == nil {
             self.transcriptTextSize = Self.defaultTranscriptTextSize
         } else {
@@ -2428,9 +2441,12 @@ final class AppModel: ObservableObject {
             try Task.checkCancellation()
 
             let translation = Self.normalizedTranslationText(answer)
+            let replacementText = includeOriginalTextDuringTranslateAndReplace
+                ? "\(translation)\n\(sourceText)"
+                : translation
 
             try await selectionAutomationService.pasteTranslation(
-                translation,
+                replacementText,
                 restoring: copiedSelection.backup
             )
             pasteboardBackup = nil
