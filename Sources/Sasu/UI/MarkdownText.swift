@@ -1,4 +1,5 @@
 import AppKit
+import CoreText
 import SwiftUI
 
 struct MarkdownText: View {
@@ -39,7 +40,7 @@ private struct MarkdownTextView: NSViewRepresentable {
 
     func updateNSView(_ textView: LinkTextView, context: Context) {
         textView.onUserScroll = onUserScroll
-        let attributedString = Self.attributedMarkdown(for: markdown, fontSize: fontSize)
+        let attributedString = attributedMarkdownText(markdown, fontSize: fontSize)
         applyTranscriptFindHighlight(
             to: attributedString,
             query: findQuery,
@@ -60,56 +61,6 @@ private struct MarkdownTextView: NSViewRepresentable {
             width: width,
             height: textView.heightThatFits(width: width)
         )
-    }
-
-    private static func attributedMarkdown(for markdown: String, fontSize: CGFloat) -> NSMutableAttributedString {
-        let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
-        let attributedString: AttributedString
-        do {
-            attributedString = try AttributedString(
-                markdown: normalizedMarkdown,
-                options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            )
-        } catch {
-            attributedString = AttributedString(normalizedMarkdown)
-        }
-
-        let result = NSMutableAttributedString(attributedString: NSAttributedString(attributedString))
-        let fullRange = NSRange(location: 0, length: result.length)
-        guard fullRange.length > 0 else { return result }
-
-        result.addAttributes(
-            [
-                .font: NSFont.systemFont(ofSize: fontSize),
-                .foregroundColor: NSColor.labelColor,
-                .paragraphStyle: paragraphStyle
-            ],
-            range: fullRange
-        )
-        addDetectedLinks(to: result)
-
-        return result
-    }
-
-    private static var paragraphStyle: NSParagraphStyle {
-        let style = NSMutableParagraphStyle()
-        style.paragraphSpacing = 4
-        style.lineSpacing = 0
-        style.lineBreakMode = .byWordWrapping
-        return style
-    }
-
-    private static func addDetectedLinks(to attributedString: NSMutableAttributedString) {
-        guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
-            return
-        }
-
-        let string = attributedString.string
-        let fullRange = NSRange(location: 0, length: (string as NSString).length)
-        detector.enumerateMatches(in: string, range: fullRange) { match, _, _ in
-            guard let match, let url = match.url else { return }
-            attributedString.addAttribute(.link, value: url, range: match.range)
-        }
     }
 
     final class Coordinator: NSObject, NSTextViewDelegate {
@@ -165,6 +116,82 @@ func transcriptHighlightedText(
         selectedOccurrence: selectedOccurrence
     )
     return Text(AttributedString(attributedString))
+}
+
+func attributedMarkdownText(_ markdown: String, fontSize: CGFloat) -> NSMutableAttributedString {
+    let normalizedMarkdown = markdown.replacingOccurrences(of: "\r\n", with: "\n")
+    let attributedString: AttributedString
+    do {
+        attributedString = try AttributedString(
+            markdown: normalizedMarkdown,
+            options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
+        )
+    } catch {
+        attributedString = AttributedString(normalizedMarkdown)
+    }
+
+    let result = NSMutableAttributedString(attributedString: NSAttributedString(attributedString))
+    let fullRange = NSRange(location: 0, length: result.length)
+    guard fullRange.length > 0 else { return result }
+
+    let baseFont = NSFont.systemFont(ofSize: fontSize)
+    result.addAttributes(
+        [
+            .font: baseFont,
+            .foregroundColor: NSColor.labelColor,
+            .paragraphStyle: markdownParagraphStyle
+        ],
+        range: fullRange
+    )
+    applyFallbackFonts(to: result, baseFont: baseFont)
+    addDetectedLinks(to: result)
+
+    return result
+}
+
+private func applyFallbackFonts(
+    to attributedString: NSMutableAttributedString,
+    baseFont: NSFont
+) {
+    let string = attributedString.string as NSString
+    let fullRange = NSRange(location: 0, length: string.length)
+
+    string.enumerateSubstrings(
+        in: fullRange,
+        options: [.byComposedCharacterSequences, .substringNotRequired]
+    ) { _, characterRange, _, _ in
+        let fallbackFont = CTFontCreateForString(
+            baseFont,
+            string,
+            CFRange(location: characterRange.location, length: characterRange.length)
+        )
+        guard CTFontCopyPostScriptName(fallbackFont) != baseFont.fontName as CFString else {
+            return
+        }
+
+        attributedString.addAttribute(.font, value: fallbackFont, range: characterRange)
+    }
+}
+
+private var markdownParagraphStyle: NSParagraphStyle {
+    let style = NSMutableParagraphStyle()
+    style.paragraphSpacing = 4
+    style.lineSpacing = 0
+    style.lineBreakMode = .byWordWrapping
+    return style
+}
+
+private func addDetectedLinks(to attributedString: NSMutableAttributedString) {
+    guard let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else {
+        return
+    }
+
+    let string = attributedString.string
+    let fullRange = NSRange(location: 0, length: (string as NSString).length)
+    detector.enumerateMatches(in: string, range: fullRange) { match, _, _ in
+        guard let match, let url = match.url else { return }
+        attributedString.addAttribute(.link, value: url, range: match.range)
+    }
 }
 
 private final class LinkTextView: NSTextView {

@@ -588,21 +588,25 @@ private struct TranscriptMessageView: View {
 
             if let image = message.image {
                 HStack(alignment: .top, spacing: 10) {
-                    Image(nsImage: image)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(width: 120, height: 76)
-                        .clipShape(RoundedRectangle(cornerRadius: 8))
-                        .overlay {
-                            RoundedRectangle(cornerRadius: 8)
-                                .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
+                    Button {
+                        if let imageData = message.imageData {
+                            appModel.showScreenshotWindow(imageData: imageData)
                         }
-                        .onTapGesture(count: 2) {
-                            if let imageData = message.imageData {
-                                appModel.showScreenshotWindow(imageData: imageData)
+                    } label: {
+                        Image(nsImage: image)
+                            .resizable()
+                            .scaledToFill()
+                            .frame(width: 120, height: 76)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 8)
+                                    .stroke(Color.secondary.opacity(0.35), lineWidth: 1)
                             }
-                        }
-                        .help("Double-click to open screenshot")
+                            .contentShape(RoundedRectangle(cornerRadius: 8))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Open screenshot preview")
+                    .help("Click to open screenshot")
 
                     transcriptHighlightedText(
                         message.text,
