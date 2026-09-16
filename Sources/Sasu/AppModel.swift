@@ -2464,14 +2464,25 @@ final class AppModel: ObservableObject {
             if let pasteboardBackup {
                 pasteboardBackup.restore()
             }
-            errorMessage = error.localizedDescription
+            let failureMessage = error.localizedDescription
+            errorMessage = failureMessage
             statusMessage = String(localized: "Selection translation failed.")
-            Self.logger.error("Selection translation failed: \(error.localizedDescription, privacy: .public)")
-            requestUserAttentionIfNeeded()
+            Self.logger.error("Selection translation failed: \(failureMessage, privacy: .public)")
+            presentTranslateAndReplaceFailureAlert(message: failureMessage)
         }
 
         isRequestInFlight = false
         currentRequestTask = nil
+    }
+
+    private func presentTranslateAndReplaceFailureAlert(message: String) {
+        NSApp.activate(ignoringOtherApps: true)
+
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = String(localized: "Translate & Replace Failed")
+        alert.informativeText = String(localized: "\(message)\n\nYour selected text was not changed. Check your API access, then try again.")
+        alert.runModal()
     }
 
     private static func normalizedTranslationText(_ text: String) -> String {
