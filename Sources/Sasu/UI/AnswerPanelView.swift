@@ -8,6 +8,7 @@ struct AnswerPanelView: View {
     @State private var isFindVisible = false
     @State private var findQuery = ""
     @State private var currentFindMatchIndex = 0
+    @State private var findMatches: [TranscriptFindMatch] = []
     @FocusState private var isFindFieldFocused: Bool
 
     var body: some View {
@@ -37,6 +38,15 @@ struct AnswerPanelView: View {
             guard let request else { return }
             handleTranscriptFindRequest(request)
         }
+        .onChange(of: activeFindQuery) { _ in
+            refreshFindMatches()
+        }
+        .onChange(of: appModel.transcriptMessages) { _ in
+            refreshFindMatches()
+        }
+        .onChange(of: appModel.streamingResponseText) { _ in
+            refreshFindMatches()
+        }
         .onDrop(of: [.image, .fileURL], isTargeted: $isImageDropTargeted) { providers in
             appModel.handleDroppedImageProviders(providers)
         }
@@ -55,9 +65,9 @@ struct AnswerPanelView: View {
         }
     }
 
-    private var findMatches: [TranscriptFindMatch] {
-        transcriptFindMatches(
-            query: findQuery,
+    private func refreshFindMatches() {
+        findMatches = transcriptFindMatches(
+            query: activeFindQuery,
             messages: appModel.transcriptMessages,
             streamingResponseText: appModel.streamingResponseText
         )
@@ -442,6 +452,7 @@ struct AnswerPanelView: View {
 
     private func handleTranscriptFindRequest(_ request: TranscriptFindRequest) {
         isFindVisible = true
+        refreshFindMatches()
         switch request.action {
         case .show:
             DispatchQueue.main.async {
