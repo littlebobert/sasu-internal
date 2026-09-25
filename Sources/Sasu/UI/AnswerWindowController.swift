@@ -22,6 +22,9 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         resizeForOnboardingIfNeeded(appModel: appModel)
         guard activate else { return }
 
+        if window?.isMiniaturized == true {
+            window?.deminiaturize(nil)
+        }
         window?.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
@@ -151,7 +154,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     private func makeWindow(appModel: AppModel) -> NSPanel {
         let panel = ImagePastePanel(
             contentRect: initialFrame(),
-            styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
