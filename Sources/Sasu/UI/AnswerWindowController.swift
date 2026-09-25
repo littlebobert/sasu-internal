@@ -171,7 +171,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             appModel?.handleDroppedImageData(imageData) == true
         }
         panel.toolbar = makeToolbar()
-        panel.toolbar?.displayMode = .labelOnly
+        panel.toolbar?.displayMode = .iconOnly
         panel.toolbar?.sizeMode = .regular
         panel.toolbarStyle = .unified
         panel.contentView = NSHostingView(
@@ -198,7 +198,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     private func makeToolbar() -> NSToolbar {
         let toolbar = NSToolbar(identifier: "SasuTranscriptToolbarV2")
         toolbar.delegate = self
-        toolbar.displayMode = .labelOnly
+        toolbar.displayMode = .iconOnly
         toolbar.sizeMode = .regular
         toolbar.allowsUserCustomization = true
         toolbar.autosavesConfiguration = true
@@ -232,6 +232,10 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         weight: .regular
     )
 
+    // Icon Only mode packs items edge to edge; padding the image spaces them out
+    // without affecting label modes, where the label already sets the item width.
+    private static let toolbarSymbolHorizontalPadding: CGFloat = 5
+
     private static func symbolImage(named symbolNames: [String], style: ToolbarSymbolStyle) -> NSImage? {
         for symbolName in symbolNames {
             guard let image = NSImage(
@@ -256,10 +260,21 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             }
 
             configuredImage.isTemplate = false
-            return configuredImage
+            return horizontallyPadded(configuredImage)
         }
 
         return nil
+    }
+
+    private static func horizontallyPadded(_ image: NSImage) -> NSImage {
+        let padding = toolbarSymbolHorizontalPadding
+        let paddedSize = NSSize(width: image.size.width + padding * 2, height: image.size.height)
+        let paddedImage = NSImage(size: paddedSize, flipped: false) { _ in
+            image.draw(in: NSRect(origin: NSPoint(x: padding, y: 0), size: image.size))
+            return true
+        }
+        paddedImage.isTemplate = false
+        return paddedImage
     }
 
     private func observeAppModel(_ appModel: AppModel) {
