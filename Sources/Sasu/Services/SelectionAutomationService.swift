@@ -21,6 +21,7 @@ struct SelectionAutomationService {
         guard hasAccessibilityAccess() else {
             throw SelectionAutomationError.accessibilityRequired
         }
+        try requirePostEventAccess()
 
         let backup = PasteboardBackup.capture(from: pasteboard)
         let sentinel = "dev.sasu.Sasu.selection-sentinel.\(UUID().uuidString)"
@@ -34,6 +35,11 @@ struct SelectionAutomationService {
 
             guard let copiedText = pasteboard.string(forType: .string),
                   copiedText != sentinel else {
+                let frontmostBundle = NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown"
+                DiagnosticLogger.log(
+                    "Copy command produced no text. frontmostBundle=\(frontmostBundle) pasteboardChanged=\(pasteboard.string(forType: .string) != sentinel) axTrusted=\(AXIsProcessTrusted()) postEventAccess=\(CGPreflightPostEventAccess())",
+                    category: "Selection"
+                )
                 throw SelectionAutomationError.noSelection
             }
 
@@ -57,6 +63,7 @@ struct SelectionAutomationService {
         guard hasAccessibilityAccess() else {
             throw SelectionAutomationError.accessibilityRequired
         }
+        try requirePostEventAccess()
 
         pasteboard.clearContents()
         pasteboard.setString(text, forType: .string)
@@ -66,6 +73,16 @@ struct SelectionAutomationService {
         try await Task.sleep(nanoseconds: clipboardPasteDelayNanoseconds)
 
         backup.restore(to: pasteboard)
+    }
+
+    // AXIsProcessTrusted() can stay true while macOS silently drops synthetic
+    // key events (e.g. a stale grant after a reboot), so check posting separately.
+    private func requirePostEventAccess() throws {
+        guard CGPreflightPostEventAccess() else {
+            DiagnosticLogger.log("Post-event access is missing even though Accessibility is trusted.", category: "Selection")
+            CGRequestPostEventAccess()
+            throw SelectionAutomationError.accessibilityRequired
+        }
     }
 
     private func postCommandKey(keyCode: CGKeyCode) throws {
