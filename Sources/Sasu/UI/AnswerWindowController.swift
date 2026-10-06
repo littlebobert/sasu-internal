@@ -96,6 +96,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             return toolbarItem(
                 identifier: itemIdentifier,
                 label: String(localized: "Clear"),
+                toolTip: String(localized: "Clear Transcript"),
                 symbolNames: ["trash"],
                 symbolStyle: .multicolor,
                 action: #selector(clearTranscript)
@@ -104,6 +105,7 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
             return toolbarItem(
                 identifier: itemIdentifier,
                 label: String(localized: "Settings"),
+                toolTip: String(localized: "Open Settings"),
                 symbolNames: ["gear", "gearshape"],
                 symbolStyle: .multicolor,
                 action: #selector(showSettings)
