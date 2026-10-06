@@ -59,7 +59,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .captureScreen:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: String(localized: "Capture & Ask"),
+                label: String(localized: "Capture"),
+                toolTip: String(localized: "Capture & Ask"),
                 symbolNames: ["camera.viewfinder", "rectangle.dashed"],
                 symbolStyle: .accent,
                 action: #selector(captureScreen)
@@ -67,7 +68,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .translateSelection:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: String(localized: "Translate Selection"),
+                label: String(localized: "Translate"),
+                toolTip: String(localized: "Translate Selection"),
                 symbolNames: ["translate", "character.book.closed", "textformat"],
                 symbolStyle: .accent,
                 action: #selector(translateSelection)
@@ -75,7 +77,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .translateAndReplace:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: String(localized: "Translate & Replace"),
+                label: String(localized: "Replace"),
+                toolTip: String(localized: "Translate & Replace"),
                 symbolNames: ["character.cursor.ibeam", "text.cursor"],
                 symbolStyle: .accent,
                 action: #selector(translateAndReplace)
@@ -83,7 +86,8 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
         case .copyAnswer:
             return toolbarItem(
                 identifier: itemIdentifier,
-                label: String(localized: "Copy Answer"),
+                label: String(localized: "Copy"),
+                toolTip: String(localized: "Copy Answer"),
                 symbolNames: ["doc.on.doc", "doc.on.clipboard"],
                 symbolStyle: .accent,
                 action: #selector(copyAnswer)
@@ -208,14 +212,15 @@ final class AnswerWindowController: NSObject, NSToolbarDelegate, NSToolbarItemVa
     private func toolbarItem(
         identifier: NSToolbarItem.Identifier,
         label: String,
+        toolTip: String? = nil,
         symbolNames: [String],
         symbolStyle: ToolbarSymbolStyle,
         action: Selector
     ) -> NSToolbarItem {
         let item = NSToolbarItem(itemIdentifier: identifier)
         item.label = label
-        item.paletteLabel = label
-        item.toolTip = label
+        item.paletteLabel = toolTip ?? label
+        item.toolTip = toolTip ?? label
         item.image = Self.symbolImage(named: symbolNames, style: symbolStyle)
         item.target = self
         item.action = action
