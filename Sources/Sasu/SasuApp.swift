@@ -115,7 +115,7 @@ struct SasuApp: App {
                 .keyboardShortcut("g", modifiers: [.command, .shift])
             }
 
-            CommandMenu("View") {
+            CommandGroup(before: .toolbar) {
                 Button("Increase Text Size") {
                     appModel.increaseTranscriptTextSize()
                 }
@@ -127,6 +127,8 @@ struct SasuApp: App {
                 }
                 .keyboardShortcut("-", modifiers: [.command])
                 .disabled(!appModel.canDecreaseTranscriptTextSize)
+
+                Divider()
             }
 
             CommandMenu("Sasu") {
