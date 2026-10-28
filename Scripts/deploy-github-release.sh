@@ -430,6 +430,7 @@ body = {
         }
     ],
     "reasoning": {"effort": reasoning_effort},
+    "text": {"format": {"type": "json_object"}},
 }
 print(json.dumps(body))
 PY
@@ -542,6 +543,7 @@ body = {
         }
     ],
     "reasoning": {"effort": reasoning_effort},
+    "text": {"format": {"type": "json_object"}},
 }
 print(json.dumps(body))
 PY
