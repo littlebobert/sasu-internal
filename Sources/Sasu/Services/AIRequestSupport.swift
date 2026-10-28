@@ -7,6 +7,16 @@ enum AIRequestCredential {
 }
 
 enum AIRequestSupport {
+    // URLSession reports a cancelled task as URLError.cancelled rather than
+    // CancellationError, so callers would treat Stop as a failure.
+    static func mappingURLCancellation<T>(_ operation: () async throws -> T) async throws -> T {
+        do {
+            return try await operation()
+        } catch let error as URLError where error.code == .cancelled {
+            throw CancellationError()
+        }
+    }
+
     static func buildScreenshotPrompt(
         prompt: String,
         screenshot: ScreenshotPayload,

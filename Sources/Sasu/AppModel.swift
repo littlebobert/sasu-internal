@@ -978,6 +978,10 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // Text-only translation does not benefit from the preset's high reasoning,
+    // and long hidden reasoning shows no progress before the first token.
+    private static let translationReasoningEffort = "low"
+
     private func translateText(
         credential: AIRequestCredential,
         sourceText: String,
@@ -991,7 +995,7 @@ final class AppModel: ObservableObject {
             return try await openAIClient.translateClipboardText(
                 credential: credential,
                 modelID: modelID,
-                reasoningEffort: reasoningEffort,
+                reasoningEffort: Self.translationReasoningEffort,
                 serviceTier: serviceTier,
                 sourceText: sourceText,
                 translationDirection: translationDirection,
@@ -1003,7 +1007,7 @@ final class AppModel: ObservableObject {
             return try await anthropicClient.translateClipboardText(
                 credential: credential,
                 modelID: modelID,
-                reasoningEffort: reasoningEffort,
+                reasoningEffort: Self.translationReasoningEffort,
                 sourceText: sourceText,
                 translationDirection: translationDirection,
                 conversationContext: conversationContext,
@@ -2229,7 +2233,7 @@ final class AppModel: ObservableObject {
         currentHighlightSuggestion = nil
         hideHighlight()
         statusMessage = String(localized: "Reading clipboard...")
-        Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+        Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
 
         do {
             try Task.checkCancellation()
@@ -2410,7 +2414,12 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         statusMessage = String(localized: "Translating selection...")
-        Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+        Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+        let startedAt = Date()
+        DiagnosticLogger.log(
+            "Translate & Replace started. model=\(modelID) reasoning=\(Self.translationReasoningEffort) frontmostBundle=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown")",
+            category: "Selection"
+        )
 
         var pasteboardBackup: PasteboardBackup?
 
@@ -2453,6 +2462,10 @@ final class AppModel: ObservableObject {
 
             statusMessage = String(localized: "Selection translated.")
             Self.logger.info("Selection translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count)")
+            DiagnosticLogger.log(
+                "Translate & Replace ready. sourceCharacters=\(sourceText.count) answerCharacters=\(translation.count) elapsedSeconds=\(Self.elapsedSeconds(since: startedAt))",
+                category: "Selection"
+            )
         } catch is CancellationError {
             if let pasteboardBackup {
                 pasteboardBackup.restore()
@@ -2460,6 +2473,10 @@ final class AppModel: ObservableObject {
             statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
             Self.logger.info("Selection translation cancelled.")
+            DiagnosticLogger.log(
+                "Translate & Replace cancelled. elapsedSeconds=\(Self.elapsedSeconds(since: startedAt))",
+                category: "Selection"
+            )
         } catch {
             if let pasteboardBackup {
                 pasteboardBackup.restore()
@@ -2468,6 +2485,10 @@ final class AppModel: ObservableObject {
             errorMessage = failureMessage
             statusMessage = String(localized: "Selection translation failed.")
             Self.logger.error("Selection translation failed: \(failureMessage, privacy: .public)")
+            DiagnosticLogger.log(
+                "Translate & Replace failed. errorType=\(String(reflecting: type(of: error))) description=\(failureMessage) elapsedSeconds=\(Self.elapsedSeconds(since: startedAt))",
+                category: "Selection"
+            )
             presentTranslateAndReplaceFailureAlert(message: failureMessage)
         }
 
@@ -2483,6 +2504,10 @@ final class AppModel: ObservableObject {
         alert.messageText = String(localized: "Translate & Replace Failed")
         alert.informativeText = String(localized: "\(message)\n\nYour selected text was not changed. Check your API access, then try again.")
         alert.runModal()
+    }
+
+    private static func elapsedSeconds(since startDate: Date) -> String {
+        String(format: "%.1f", Date().timeIntervalSince(startDate))
     }
 
     private static func normalizedTranslationText(_ text: String) -> String {

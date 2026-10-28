@@ -54,17 +54,19 @@ struct OpenAIClient {
             stream: true
         )
 
-        let text = try await sendResponsesRequest(
-            credential: credential,
-            requestBody: requestBody,
-            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))",
-            onPartialText: { streamedJSON in
-                guard let partialAnswer = AIRequestSupport.partialAnswer(from: streamedJSON), !partialAnswer.isEmpty else {
-                    return
+        let text = try await AIRequestSupport.mappingURLCancellation {
+            try await sendResponsesRequest(
+                credential: credential,
+                requestBody: requestBody,
+                logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), imageDetail=\(imageDetail), uploadBytes=\(uploadImage.data.count), uploadWidth=\(Int(uploadImage.pixelSize.width)), uploadHeight=\(Int(uploadImage.pixelSize.height))",
+                onPartialText: { streamedJSON in
+                    guard let partialAnswer = AIRequestSupport.partialAnswer(from: streamedJSON), !partialAnswer.isEmpty else {
+                        return
+                    }
+                    await onPartialAnswer?(partialAnswer)
                 }
-                await onPartialAnswer?(partialAnswer)
-            }
-        )
+            )
+        }
 
         return AIRequestSupport.parseAssistantResult(from: text)
     }
@@ -100,14 +102,16 @@ struct OpenAIClient {
             stream: true
         )
 
-        return try await sendResponsesRequest(
-            credential: credential,
-            requestBody: requestBody,
-            logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)",
-            onPartialText: { text in
-                await onPartialAnswer?(text)
-            }
-        )
+        return try await AIRequestSupport.mappingURLCancellation {
+            try await sendResponsesRequest(
+                credential: credential,
+                requestBody: requestBody,
+                logSummary: "model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)",
+                onPartialText: { text in
+                    await onPartialAnswer?(text)
+                }
+            )
+        }
     }
 
     private func sendResponsesRequest(
