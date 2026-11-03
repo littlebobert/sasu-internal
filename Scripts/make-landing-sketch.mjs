@@ -1,9 +1,9 @@
 // Draws the pencil sketch used as the landing page's icon (sasu.html in the sibling
 // littlebobert.github.io repository) as a flipbook, in the way of Karui's and Umete's,
 // laid out like the photo in Sasu's icon: a man in a kimono walks up the statue's
-// sloping rock, stops where the statue stands, in its stance, and points up at a written
-// あ, which is ringed in red, then walks on and off the edge. Each
-// drawing is redrawn with fresh wobble, so it boils like pencil on paper. Writes
+// sloping rock, stops where the statue stands, turns to face us and steps out into its
+// stance to point at a written あ, which is ringed in red, then turns and walks on off
+// the edge. Each drawing is redrawn with fresh wobble, so it boils like pencil on paper. Writes
 // assets/sasu-icon-sketch.mp4, and him pointing as assets/sasu-icon-sketch.jpg. Nothing
 // is committed or pushed.
 //
@@ -174,7 +174,6 @@ const stride = 300;
 const cycle = 10;
 const thigh = 134, shin = 134, ankleHeight = 16;
 
-// Standing, his feet are apart as the statue's are: the near one ahead, up the slope.
 function feet(pose, groundNear) {
   return [0, 1].map((k) => {
     const p = (pose.phase + k * 0.5) % 1;
@@ -186,17 +185,16 @@ function feet(pose, groundNear) {
       reach = pose.amp * (-stride / 4 + (stride / 2) * smooth(q));
       lift = pose.amp * 44 * Math.sin(Math.PI * q);
     }
-    reach += pose.stance * (k === 0 ? 74 : -60);
     return { ankle: [-reach, groundNear(-reach) - ankleHeight - lift], lift };
   });
 }
 
-// The knee, bent forward, between the hip and the ankle.
-function knee(hip, ankle) {
+// The knee between the hip and the ankle, bent to the left, or with side -1 to the right.
+function knee(hip, ankle, side = 1) {
   const dx = ankle[0] - hip[0], dy = ankle[1] - hip[1];
   const d = Math.min(Math.hypot(dx, dy), thigh + shin - 0.5);
   const base = Math.atan2(dy, dx), bend = Math.acos((thigh * thigh + d * d - shin * shin) / (2 * thigh * d));
-  return [hip[0] + Math.cos(base + bend) * thigh, hip[1] + Math.sin(base + bend) * thigh];
+  return [hip[0] + Math.cos(base + bend * side) * thigh, hip[1] + Math.sin(base + bend * side) * thigh];
 }
 
 // An arm or leg: paper under it so it hides what's behind, a tone, and its two edges.
@@ -208,8 +206,9 @@ function limb(points, width, tone) {
     + brush(offset(path, -width / 2), 10, 0.95, { wobble: 1.5, shift: 1, overshoot: 3 });
 }
 
-function foot(ankle, lift) {
-  const toe = [ankle[0] - 46, ankle[1] + 12 - lift * 0.2], heel = [ankle[0] + 10, ankle[1] + 12];
+// A foot from the ankle, its toe `toward` along the rock.
+function foot(ankle, toward, lift = 0) {
+  const toe = [ankle[0] + toward, ankle[1] + 12 - lift * 0.2], heel = [ankle[0] - Math.sign(toward) * 10, ankle[1] + 12];
   return brush(line(heel, toe, 3), 20, 1, { wobble: 1, shift: 1, overshoot: 2, heavy: 0.3 });
 }
 
@@ -245,33 +244,51 @@ function hand(wrist, angle, pointing) {
   return s;
 }
 
-// He leans into the point a little; the arm swings up through forward to point up-left,
-// as the statue's does: the upper arm level, under his chin, and the forearm rising.
-const elbowAngle = 190;
-const pointAngle = 212;
+// The head, close-cropped, on its neck, its nose to the left: ear is where the ear is
+// across it, near the middle side-on and at the back as he looks left facing us.
+function head(center, neck, ear) {
+  const skull = Array.from({ length: 25 }, (_, k) => { const a = (k / 24) * Math.PI * 2; return [center[0] + Math.cos(a) * 46, center[1] + Math.sin(a) * 54]; });
+  let s = brush(line(add(center, [-14, 42]), add(neck, [-18, 4]), 3), 8, 0.9, { overshoot: 0 }) + brush(line(add(center, [22, 40]), add(neck, [16, -2]), 3), 8, 0.9, { overshoot: 0 });
+  s += `<path d="${pathOf(skull)}" fill="${paper}"/><g clip-path="url(#head)">${hatch(center[0] - 120, center[0] + 60, center[1] + 60, center[1] - 60, 10, 7, skinTone, 0.6)}`;
+  for (let x = center[0] - 30; x < center[0] + 60; x += 7 + rand() * 3) s += brush(line([x, center[1] - 12 + (x - center[0]) * 0.2], [x + 18, center[1] - 60], 3), 6, 0.75, { wobble: 1, shift: 1, overshoot: 0 });
+  s += "</g>" + brush(skull, 12, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
+  s += brush([add(center, [-40, -2]), add(center, [-53, 12]), add(center, [-40, 18])], 9, 1, { wobble: 1, overshoot: 0 });
+  s += brush(line(add(center, [-26, -6]), add(center, [-20, -6]), 1), 9, 1, { wobble: 0.5, overshoot: 0 });
+  s += brush(Array.from({ length: 6 }, (_, k) => [center[0] + ear + Math.cos(-1.4 + k * 0.6) * 11, center[1] + 6 + Math.sin(-1.4 + k * 0.6) * 13]), 6, 0.85, { wobble: 0.5, overshoot: 0 });
+  return { clip: `<clipPath id="head"><path d="${pathOf(skull)}"/></clipPath>`, svg: s };
+}
 
-function figure(pose) {
-  // The rock under him, in his own units, level with his hip's foot at 0.
-  const groundNear = (dx) => (groundAt(pose.x + dx * scale) - groundAt(pose.x)) / scale;
+// The rock under him, in his own units, level with his hip's foot at 0.
+const groundUnder = (pose) => (dx) => (groundAt(pose.x + dx * scale) - groundAt(pose.x)) / scale;
+
+// His shadow on the rock, along its slope, from `from` to `to` across.
+function shadow(groundNear, from, to) {
+  let s = "";
+  for (let i = 0; i < 5; i++) {
+    const a = from + i * 6 + j(10), b = to - i * 10 + j(10), down = 10 + i * 4 + j(1.5);
+    s += brush(line([a, groundNear(a) + down], [b, groundNear(b) + down + j(2)], 4), 7, 0.6 - i * 0.07, { wobble: 1.5, shift: 0.5, overshoot: 6 });
+  }
+  return s;
+}
+
+// Walking, side-on, facing left.
+function walker(pose) {
+  const groundNear = groundUnder(pose);
   const [nearFoot, farFoot] = feet(pose, groundNear);
-  const hip = [0, -ankleHeight - (thigh + shin) * 0.985 + 12 * Math.max(pose.amp, pose.stance) + 4 * pose.stance + pose.amp * 5 * Math.cos(4 * Math.PI * pose.phase)];
-  const shoulder = [hip[0] - 16 + 6 * pose.point, hip[1] - 214];
+  const hip = [0, -ankleHeight - (thigh + shin) * 0.985 + 12 * pose.amp + pose.amp * 5 * Math.cos(4 * Math.PI * pose.phase)];
+  const shoulder = [hip[0] - 16, hip[1] - 214];
   const swing = pose.amp * 26 * Math.sin(2 * Math.PI * pose.phase);
 
-  // The far arm, behind him, swinging against the near one, or raised to point, as the
-  // statue's is, out past his chest.
-  const raise = pose.point;
-  const farShoulder = add(shoulder, [12, 4 + 8 * Math.min(raise, 1)]);
-  const farUpper = 90 - swing + (elbowAngle - 90 + swing) * raise;
-  const farFore = 104 - swing + (pointAngle - 104 + swing) * raise;
-  const farElbow = polar(farShoulder, farUpper, 118), farWrist = polar(farElbow, farFore, 104);
-  const farSleeve = sleeve(farShoulder, farUpper, "farSleeve");
-  let s = limb([farElbow, farWrist], 26, legTone) + farSleeve.svg + hand(farWrist, farFore, raise > 0.6);
+  // The far arm, behind him, swinging against the near one.
+  const farShoulder = add(shoulder, [12, 4]);
+  const farElbow = polar(farShoulder, 90 - swing, 118), farWrist = polar(farElbow, 104 - swing, 104);
+  const farSleeve = sleeve(farShoulder, 90 - swing, "farSleeve");
+  let s = limb([farElbow, farWrist], 26, legTone) + farSleeve.svg + hand(farWrist, 104 - swing, false);
 
-  // The legs: the far one darker, both under the robe from the knee up.
-  for (const [leg, tone] of [[farFoot, legTone], [nearFoot, legTone]]) {
+  // The legs, both under the robe from the knee up.
+  for (const leg of [farFoot, nearFoot]) {
     const legHip = add(hip, leg === farFoot ? [10, 0] : [-4, 0]);
-    s += limb([legHip, knee(legHip, leg.ankle), leg.ankle], 42, tone) + foot(leg.ankle, leg.lift);
+    s += limb([legHip, knee(legHip, leg.ankle), leg.ankle], 42, legTone) + foot(leg.ankle, -46, leg.lift);
   }
 
   // The robe, to just under the knee, its hem swaying as he walks.
@@ -295,40 +312,96 @@ function figure(pose) {
   s += brush(line(add(hip, [-58, -44]), add(hip, [56, -41]), 4), 8, 0.9, { overshoot: 3 }) + brush(line(add(hip, [-58, -14]), add(hip, [58, -12]), 4), 8, 0.9, { overshoot: 3 });
   s += brush(spline([add(shoulder, [-4, -4]), add(shoulder, [-18, 50]), add(hip, [-44, -50])], false, 4), 8, 0.9, { overshoot: 2 });
 
-  // The head, close-cropped, nose to the left, on its neck.
-  const head = add(shoulder, [-18, -68]);
-  const skull = Array.from({ length: 25 }, (_, k) => { const a = (k / 24) * Math.PI * 2; return [head[0] + Math.cos(a) * 46, head[1] + Math.sin(a) * 54]; });
-  s += brush(line(add(head, [-14, 42]), add(shoulder, [-18, 4]), 3), 8, 0.9, { overshoot: 0 }) + brush(line(add(head, [22, 40]), add(shoulder, [16, -2]), 3), 8, 0.9, { overshoot: 0 });
-  s += `<path d="${pathOf(skull)}" fill="${paper}"/><g clip-path="url(#head)">${hatch(head[0] - 120, head[0] + 60, head[1] + 60, head[1] - 60, 10, 7, skinTone, 0.6)}`;
-  for (let x = head[0] - 30; x < head[0] + 60; x += 7 + rand() * 3) s += brush(line([x, head[1] - 12 + (x - head[0]) * 0.2], [x + 18, head[1] - 60], 3), 6, 0.75, { wobble: 1, shift: 1, overshoot: 0 });
-  s += "</g>" + brush(skull, 12, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
-  s += brush([add(head, [-40, -2]), add(head, [-53, 12]), add(head, [-40, 18])], 9, 1, { wobble: 1, overshoot: 0 });
-  s += brush(line(add(head, [-26, -6]), add(head, [-20, -6]), 1), 9, 1, { wobble: 0.5, overshoot: 0 });
-  s += brush(Array.from({ length: 6 }, (_, k) => [head[0] + 10 + Math.cos(-1.4 + k * 0.6) * 11, head[1] + 6 + Math.sin(-1.4 + k * 0.6) * 13]), 6, 0.85, { wobble: 0.5, overshoot: 0 });
+  const face = head(add(shoulder, [-18, -68]), shoulder, 10);
+  s += face.svg;
 
-  // The near arm, over the robe: swinging as he walks, or, while he points, bent to hold
-  // a scroll to his chest, as the statue does.
-  const upper = 90 + swing + (100 - 90 - swing) * Math.min(raise, 1);
-  const fore = 104 + swing + (238 - 104 - swing) * Math.min(raise, 1);
-  const elbow = polar(shoulder, upper, 118), wrist = polar(elbow, fore, 104);
-  const nearSleeve = sleeve(add(shoulder, [-4, 2]), upper, "nearSleeve");
-  s += limb([elbow, wrist], 26, skinTone) + nearSleeve.svg;
-  if (raise > 0.6) s += brush(line(add(wrist, [6, -40]), add(wrist, [-4, 46]), 3), 20, 0.9, { color: legTone, wobble: 1, shift: 1, overshoot: 2, heavy: 0.2 });
-  s += hand(wrist, fore, false);
-
-  // His shadow on the rock, along its slope.
-  let shadow = "";
-  for (let i = 0; i < 5; i++) {
-    const from = -96 + i * 6 + j(10), to = 90 - i * 10 + j(10), down = 10 + i * 4 + j(1.5);
-    shadow += brush(line([from, groundNear(from) + down], [to, groundNear(to) + down + j(2)], 4), 7, 0.6 - i * 0.07, { wobble: 1.5, shift: 0.5, overshoot: 6 });
-  }
+  // The near arm, over the robe, swinging as he walks.
+  const elbow = polar(shoulder, 90 + swing, 118), wrist = polar(elbow, 104 + swing, 104);
+  const nearSleeve = sleeve(add(shoulder, [-4, 2]), 90 + swing, "nearSleeve");
+  s += limb([elbow, wrist], 26, skinTone) + nearSleeve.svg + hand(wrist, 104 + swing, false);
 
   return {
-    clips: `<clipPath id="robe"><path d="${pathOf(robe)}"/></clipPath><clipPath id="head"><path d="${pathOf(skull)}"/></clipPath>${farSleeve.clip}${nearSleeve.clip}`,
-    svg: shadow + s,
-    fingertip: polar(farWrist, farFore, 46),
+    clips: `<clipPath id="robe"><path d="${pathOf(robe)}"/></clipPath>${face.clip}${farSleeve.clip}${nearSleeve.clip}`,
+    svg: shadow(groundNear, -96, 90) + s,
   };
 }
+
+// Standing as the statue does, facing us, his head turned to look left: his right foot
+// stepped out wide up the slope and his left under him, his right arm out straight to
+// point, a deep sleeve hanging from it, and his left hand holding a scroll to his chest.
+// turn is how far he's come round to face us from side-on, stance how far he's stepped
+// out, step how high that foot is off the rock, and point how far the arm is raised.
+const pointAngle = 204;
+
+function stander(pose) {
+  const groundNear = groundUnder(pose);
+  const c = 0.4 + 0.6 * pose.turn;
+  const X = (x) => x * c;
+  const legs = [
+    { top: X(-24), reach: X(-24) - 150 * pose.stance, lift: 40 * pose.step, side: 1, toe: -40 },
+    { top: X(24), reach: X(24) + 30 * pose.stance, lift: 0, side: -1, toe: 26 },
+  ];
+  // The hip as high as both legs reach, the planted feet on the rock.
+  const reachable = thigh + shin - 2;
+  const hipY = Math.max(...legs.map((l) => groundNear(l.reach) - ankleHeight - Math.sqrt(reachable ** 2 - (l.reach - l.top) ** 2)));
+  const top = hipY - 214;
+
+  let s = "";
+  for (const l of legs) {
+    const ankle = [l.reach, groundNear(l.reach) - ankleHeight - l.lift], from = [l.top, hipY];
+    s += limb([from, knee(from, ankle, l.side), ankle], 44, legTone) + foot(ankle, l.toe, l.lift);
+  }
+
+  // The robe, its outer coat open down the front and flared over his legs.
+  const wide = pose.stance;
+  const robe = spline([
+    [X(-80), top + 8], [X(-70), top + 70], [X(-56), hipY - 40], [X(-70) - 70 * wide, hipY + 140], [X(-28) - 30 * wide, hipY + 160],
+    [X(36) + 14 * wide, hipY + 172], [X(70) + 34 * wide, hipY + 158], [X(56), hipY - 40], [X(70), top + 70], [X(80), top + 8], [X(24), top - 4], [X(-24), top - 4],
+  ], true, 6);
+  s += `<path d="${pathOf(robe)}" fill="${paper}"/><g clip-path="url(#robe)">` + hatch(-420, 200, hipY + 190, top - 20, 12, 10, robeTone, 0.7);
+  // Pencil shade on his left, away from the sun, crossed the other way.
+  for (let x = X(10); x < X(90) + 40 * wide; x += 10 + rand() * 4) {
+    const from = hipY + 190, upTo = top + 60 + rand() * 60;
+    s += brush(line([x + 60, from], [x + 60 - (from - upTo) * 0.3, upTo], 3), 6, 0.6, { wobble: 1.5, shift: 1, overshoot: 2 });
+  }
+  s += "</g>" + brush(robe, 14, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
+  s += brush(spline([[X(-22), top - 2], [X(-30), hipY - 30], [X(-40) - 30 * wide, hipY + 152]], false, 4), 8, 0.9, { overshoot: 2 });
+  s += brush(spline([[X(22), top - 2], [X(32), hipY - 30], [X(44) + 16 * wide, hipY + 166]], false, 4), 8, 0.9, { overshoot: 2 });
+  s += brush(line([X(-18), top], [X(8), top + 76], 3), 7, 0.85, { overshoot: 0 }) + brush(line([X(18), top], [X(-2), top + 62], 3), 7, 0.85, { overshoot: 0 });
+  s += brush(line([X(-54), hipY - 30], [X(54), hipY - 28], 4), 24, 0.75, { color: legTone, wobble: 1, overshoot: 0, heavy: 0.2 });
+  s += brush(line([X(-56), hipY - 43], [X(56), hipY - 41], 4), 7, 0.9, { overshoot: 3 }) + brush(line([X(-56), hipY - 16], [X(56), hipY - 14], 4), 7, 0.9, { overshoot: 3 });
+  s += brush(spline([[X(-10), hipY - 10], [X(-16) - 10 * wide, hipY + 80], [X(-14) - 16 * wide, hipY + 162]], false, 4), 7, 0.6, { overshoot: 2 });
+
+  const neck = [X(-2), top];
+  const face = head([X(-8), top - 66], neck, 10 + 22 * pose.turn);
+  s += face.svg;
+
+  // His left arm, on our right, kept down by his side, the forearm angled in to hold a
+  // scroll at his hip.
+  const raise = Math.min(pose.point, 1);
+  const leftShoulder = [X(70), top + 12];
+  const leftUpper = 86 + (82 - 86) * raise, leftFore = 94 + (122 - 94) * raise;
+  const leftElbow = polar(leftShoulder, leftUpper, 116), leftWrist = polar(leftElbow, leftFore, 96);
+  const leftSleeve = sleeve(leftShoulder, leftUpper, "nearSleeve");
+  s += leftSleeve.svg + limb([leftElbow, leftWrist], 26, skinTone);
+  if (raise > 0.6) s += brush(line(add(leftWrist, [4, -44]), add(leftWrist, [-2, 50]), 3), 20, 0.9, { color: legTone, wobble: 1, shift: 1, overshoot: 2, heavy: 0.2 });
+  s += hand(leftWrist, leftFore, false);
+
+  // His right arm, on our left, raised out straight to point.
+  const rightShoulder = [X(-70), top + 12];
+  const rightUpper = 96 + (pointAngle - 4 - 96) * pose.point, rightFore = 100 + (pointAngle - 100) * pose.point;
+  const rightElbow = polar(rightShoulder, rightUpper, 118), rightWrist = polar(rightElbow, rightFore, 104);
+  const rightSleeve = sleeve(rightShoulder, rightUpper, "farSleeve");
+  s += limb([rightElbow, rightWrist], 26, skinTone) + rightSleeve.svg + hand(rightWrist, rightFore, pose.point > 0.6);
+
+  return {
+    clips: `<clipPath id="robe"><path d="${pathOf(robe)}"/></clipPath>${face.clip}${rightSleeve.clip}${leftSleeve.clip}`,
+    svg: shadow(groundNear, X(-110) - 150 * wide, X(100) + 30 * wide) + s,
+    fingertip: polar(rightWrist, rightFore, 46),
+  };
+}
+
+const figure = (pose) => (pose.turn > 0 ? stander(pose) : walker(pose));
 
 // Where a point of his drawing is in the scene.
 const placed = (pose, p) => [pose.x + p[0] * scale, groundAt(pose.x) + p[1] * scale];
@@ -360,9 +433,9 @@ function ring(amount) {
 }
 
 // The timing, in drawings at 12 a second: he walks in from off the right edge and up the
-// rock, slows to stand where the statue stands, points, and walks on off the left edge;
-// the あ and its ring go as he leaves. stance is how far he's settled into the statue's.
-const stopAt = 560;
+// rock, slows to a stop where the statue stands, turns to face us, steps out and points,
+// then turns back and walks on off the left edge; the あ and its ring go as he leaves.
+const stopAt = 620;
 const timeline = [];
 const pace = (stride * scale) / cycle;
 let x = stopAt + pace * (16 + 3.5);
@@ -370,20 +443,34 @@ let phase = 0;
 function step(amp, extra = {}) {
   x -= amp * pace;
   phase = (phase + amp / cycle) % 1;
-  timeline.push({ x, phase, amp, stance: 1 - amp, point: 0, kana: 0, ring: 0, fade: 1, ...extra });
+  timeline.push({ x, phase, amp, turn: 0, stance: 0, step: 0, point: 0, kana: 0, ring: 0, fade: 1, ...extra });
 }
+// The foot lifts most halfway through a step; parts of a move start and end at fractions
+// of it, eased, so the arm can lead or follow the foot.
+const stepping = (stance) => Math.sin(Math.PI * stance);
+const part = (t, from, to) => smooth(Math.min(1, Math.max(0, (t - from) / (to - from))));
 for (let i = 0; i < 16; i++) step(1);
-for (let i = 1; i <= 8; i++) step(1 - i / 8);
-for (let i = 0; i < 3; i++) step(0);
-[0.3, 0.7, 1.08, 1.02, 1].forEach((point, i) => step(0, { point, kana: [0, 0, 0.34, 0.67, 1][i] }));
-for (let i = 1; i <= 6; i++) step(0, { point: 1, kana: 1, ring: i / 6 });
-for (let i = 0; i < 20; i++) step(0, { point: 1, kana: 1, ring: 1 });
-for (const point of [0.6, 0.25, 0]) step(0, { point, kana: 1, ring: 1 });
-for (let i = 1; i <= 6; i++) step(i / 6, { kana: 1, ring: 1 });
+for (let i = 1; i <= 8; i++) step(1 - smooth(i / 8));
+step(0);
+for (const turn of [0.25, 0.5, 0.75, 1]) step(0, { turn });
+// He steps out, the arm rising with the foot and settling just after it lands.
+for (let i = 1; i <= 8; i++) {
+  const t = i / 8, stance = part(t, 0, 0.8);
+  step(0, { turn: 1, stance, step: stepping(stance), point: part(t, 0.15, 1) + 0.05 * Math.sin(Math.PI * part(t, 0.7, 1)), kana: part(t, 0.55, 1) });
+}
+for (let i = 1; i <= 6; i++) step(0, { turn: 1, point: 1, stance: 1, kana: 1, ring: i / 6 });
+for (let i = 0; i < 16; i++) step(0, { turn: 1, point: 1, stance: 1, kana: 1, ring: 1 });
+// Then the arm comes down, the foot steps back in after it, and he turns to go.
+for (let i = 1; i <= 7; i++) {
+  const t = i / 7, stance = 1 - part(t, 0.3, 1);
+  step(0, { turn: 1, point: 1 - part(t, 0, 0.7), stance, step: stepping(stance), kana: 1, ring: 1 });
+}
+for (const turn of [0.75, 0.5, 0.25]) step(0, { turn, kana: 1, ring: 1 });
+for (let i = 1; i <= 8; i++) step(smooth(i / 8), { kana: 1, ring: 1 });
 while (x > -260) step(1, { kana: 1, ring: 1 });
-for (const fade of [0.6, 0.3, 0]) timeline.push({ x: -2000, phase, amp: 0, stance: 0, point: 0, kana: 1, ring: 1, fade });
-const pointing = { x: stopAt, phase: 0, amp: 0, stance: 1, point: 1, kana: 1, ring: 1, fade: 1 };
-target = polar(placed(pointing, figure(pointing).fingertip), pointAngle, 100);
+for (const fade of [0.6, 0.3, 0]) timeline.push({ x: -2000, phase, amp: 0, turn: 0, stance: 0, step: 0, point: 0, kana: 1, ring: 1, fade });
+const pointing = { x: stopAt, phase: 0, amp: 0, turn: 1, stance: 1, step: 0, point: 1, kana: 1, ring: 1, fade: 1 };
+target = polar(placed(pointing, figure(pointing).fingertip), pointAngle, 96);
 
 const defs = `<filter id="pencil" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
 <feTurbulence type="fractalNoise" baseFrequency="0.9 0.55" numOctaves="3" seed="4" result="grain"/>
