@@ -2,10 +2,11 @@
 // littlebobert.github.io repository) as a flipbook, in the way of Karui's and Umete's,
 // laid out like the photo in Sasu's icon: a man in a kimono walks up the statue's
 // sloping rock, stops where the statue stands, turns to face us and steps out into its
-// stance to point at a written あ, which is ringed in red, then turns and walks on off
-// the edge. Each drawing is redrawn with fresh wobble, so it boils like pencil on paper. Writes
-// assets/sasu-icon-sketch.mp4, and him pointing as assets/sasu-icon-sketch.jpg. Nothing
-// is committed or pushed.
+// stance to point out to sea, where gulls hang over the far islands, then turns and walks
+// on off the edge. Each drawing is redrawn with fresh wobble, so it boils like pencil on
+// paper. Writes assets/sasu-icon-sketch.mp4; the empty scene it opens on, shown on the page
+// until it plays, as assets/sasu-icon-sketch-first.jpg; and him pointing, for no motion, as
+// assets/sasu-icon-sketch.jpg. Nothing is committed or pushed.
 //
 //     node Scripts/make-landing-sketch.mjs
 //
@@ -30,12 +31,12 @@ const outputSize = 224;
 const deepen = "curves=all='0/0 0.45/0.2 0.72/0.6 0.86/0.86 1/1'";
 const graphite = "#34342f";
 const paper = "#f5f1e9";
-// Mostly pencil, as Karui's and Umete's are, with one red for the ring.
+// All pencil, in greys.
 const robeTone = "#9c9990";
 const legTone = "#6a6862";
 const skinTone = "#c9c6bd";
 const rockTone = "#bdbab2";
-const red = "#d63a2c";
+const skyTone = "#a8a59d";
 
 let seed = 11;
 const rand = () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
@@ -169,7 +170,9 @@ function tube(points, widths) {
 }
 
 // The scene is laid out as the icon's photo is: the statue's rock sloping down from the
-// left to the right, under a deep sky, filling the square to its edges.
+// left to the right, under a deep sky, filling the square to its edges; beyond the rock,
+// the sea, out to a horizon low behind him.
+const horizon = 612;
 
 // Where a curve, left to right, is at x; straight on beyond its ends.
 function heightOn(curve, x) {
@@ -184,7 +187,13 @@ const rockTop = spline([[-60, 700], [0, 716], [120, 744], [215, 770], [411, 814]
 const groundAt = (x) => heightOn(rockTop, x);
 const ledge = spline([[-60, 846], [120, 870], [300, 922], [520, 986], [700, 1040], [800, 1080]], false, 5);
 const rockShape = [...rockTop, [1100, 1100], [-60, 1100]];
-const skyShape = [[-60, -60], [1100, -60], ...[...rockTop].reverse()];
+const skyShape = [[-60, -60], [1100, -60], [1100, horizon], [-60, horizon]];
+const seaShape = [[-60, horizon], [1100, horizon], ...[...rockTop].reverse()];
+// A cloud's outline about its middle: billowing on top, flat underneath.
+const cloudShape = (c, w, h) => spline([
+  [-0.5, 0.12], [-0.44, -0.18], [-0.3, -0.34], [-0.16, -0.3], [-0.04, -0.62], [0.14, -0.66], [0.24, -0.4], [0.36, -0.46], [0.48, -0.2], [0.5, 0.1], [0.2, 0.2], [-0.2, 0.2],
+].map(([x, y]) => [c[0] + x * w, c[1] + y * h]), true, 5);
+const clouds = [cloudShape([878, 330], 250, 120)];
 
 function rock() {
   let s = `<g clip-path="url(#rock)">${hatch(-420, 1100, 1080, 680, 14, 9, rockTone, 0.7)}`;
@@ -200,22 +209,61 @@ function rock() {
   for (const [a, b] of [[[250, 790], [292, 880]], [[640, 880], [600, 960]], [[880, 930], [930, 1010]]]) {
     s += brush(line(a, b, 4), 7, 0.75, { wobble: 3, overshoot: 4 });
   }
-  return s;
-}
-
-// The sky, toned with the side of the pencil, deepest at the top as the photo's blue is:
-// short, broad, faint strokes, more of them overlapping higher up.
-function sky() {
-  let s = `<g clip-path="url(#sky)">`;
-  for (let y = -20; y < 700; y += 15 + rand() * 6) {
-    const depth = Math.max(0, 1 - y / 700);
-    for (let x = -60 + j(40); x < 1080; x += 70 + rand() * 60) {
-      if (rand() > 0.25 + 0.75 * depth) continue;
-      const length = 50 + rand() * 70;
-      s += brush(line([x, y + length * 0.3], [x + length, y - length * 0.3], 2), 18, 0.12 + 0.16 * depth, { color: rockTone, wobble: 1, shift: 2, overshoot: 0, heavy: 0.8 });
-    }
+  // The granite's grain: flecks over the top of the rock, thinning out down the slope.
+  s += `<g clip-path="url(#rock)">`;
+  for (let k = 0; k < 150; k++) {
+    const x = rand() * 1080 - 30, y = groundAt(x) + 14 + rand() ** 1.6 * 200;
+    s += brush(line([x, y], [x + 4 + rand() * 8, y + j(3)], 1), 5 + rand() * 4, 0.5 + rand() * 0.3, { wobble: 0.5, shift: 0.5, overshoot: 0, heavy: 0.2 });
   }
   return `${s}</g>`;
+}
+
+// The sky, laid in with the side of the pencil as a wash: long, broad, faint strokes all
+// leaning one way, overlapping deepest in the upper left, where he points, and thinning to
+// bare paper over the horizon. The cloud is left as paper, outlined lightly, and shaded
+// underneath.
+function sky() {
+  let s = `<g clip-path="url(#sky)">`;
+  for (let y = -40; y < horizon; y += 12 + rand() * 5) {
+    for (let x = -120 + j(60); x < 1080; x += 90 + rand() * 70) {
+      const depth = Math.max(0, 1 - y / (horizon - 40)) * (1 - 0.35 * Math.max(0, x / 1024));
+      if (rand() > 0.15 + 0.85 * depth) continue;
+      const length = 120 + rand() * 110;
+      s += brush(line([x, y + length * 0.16], [x + length, y - length * 0.16], 3), 20, 0.1 + 0.2 * depth, { color: skyTone, wobble: 1.5, shift: 2, overshoot: 0, heavy: 0.8 });
+    }
+  }
+  for (const cloud of clouds) {
+    const xs = cloud.map((p) => p[0]), ys = cloud.map((p) => p[1]);
+    const [x0, x1, top, bottom] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const id = `cloud${clips++}`;
+    s += `<path d="${pathOf(cloud)}" fill="${paper}"/><clipPath id="${id}"><path d="${pathOf(cloud)}"/></clipPath><g clip-path="url(#${id})">`;
+    s += hatch(x0 - 80, x1, bottom + 6, bottom - (bottom - top) * 0.45, 13, 7, skyTone, 0.55);
+    s += `</g>${brush(cloud.slice(0, Math.round(cloud.length * 0.8)), 6, 0.5, { wobble: 2, shift: 1, overshoot: 6, heavy: 0.7 })}`;
+  }
+  return `${s}</g>`;
+}
+
+// The sea beyond the rock: far islands low on the horizon on the left, and the water drawn
+// in level strokes, close and dark at the horizon, opening out nearer, broken where the
+// light catches it.
+function sea() {
+  let s = `<g clip-path="url(#seaClip)">`;
+  for (let y = horizon + 4; y < 980; y += 6 + (y - horizon) * 0.06 + rand() * 3) {
+    const near = (y - horizon) / 360;
+    for (let x = -60 + j(50); x < 1080; x += 40 + rand() * 90 + near * 60) {
+      if (rand() < 0.22 + near * 0.25) continue;
+      const length = 30 + rand() * 80 + near * 50;
+      s += brush(line([x, y], [x + length, y + j(1.5)], 2), 5 + near * 2, 0.55 - near * 0.25, { color: skyTone, wobble: 0.6, shift: 1, overshoot: 0, heavy: 0.5 });
+    }
+  }
+  s += "</g>";
+  const island = spline([[-40, horizon], [30, horizon - 22], [96, horizon - 34], [160, horizon - 18], [214, horizon - 26], [270, horizon - 6], [300, horizon]], false, 5);
+  const id = `island${clips++}`;
+  s += `<clipPath id="${id}"><path d="${pathOf(island)}"/></clipPath><g clip-path="url(#${id})">${hatch(-120, 320, horizon + 2, horizon - 40, 8, 6, skyTone, 0.8)}</g>`;
+  s += brush(island, 6, 0.6, { wobble: 1, overshoot: 4 });
+  s += brush(spline([[560, horizon], [600, horizon - 9], [650, horizon - 12], [700, horizon]], false, 4), 5, 0.45, { wobble: 0.5, overshoot: 2 });
+  s += brush(line([-60, horizon], [1100, horizon], 16), 5, 0.75, { wobble: 1, shift: 1, overshoot: 0, heavy: 0.3 });
+  return s;
 }
 
 // The walk, in drawings: each step is half a cycle, the planted foot staying put on the
@@ -489,44 +537,31 @@ function stander(pose) {
   return {
     clips: `<clipPath id="robe"><path d="${pathOf(robe)}"/></clipPath>${face.clip}${rightSleeve.clip}${leftSleeve.clip}`,
     svg: shadow(groundNear, X(-110) - 150 * wide, X(100) + 30 * wide) + s,
-    fingertip: polar(rightWrist, rightFore, 46),
   };
 }
 
 const figure = (pose) => (pose.turn > 0 ? stander(pose) : walker(pose));
 
-// Where a point of his drawing is in the scene.
-const placed = (pose, p) => [pose.x + p[0] * scale, groundAt(pose.x) + p[1] * scale];
+// Gulls far off over the sea, where he points, each a pair of curved wings, slowly
+// beating and drifting about where it hangs. at is how far through the loop, so the last
+// drawing leads back into the first.
+const gulls = [
+  { c: [146, 118], span: 34, beat: 3, drift: 0 },
+  { c: [236, 90], span: 24, beat: 4, drift: 2.1 },
+  { c: [98, 182], span: 20, beat: 5, drift: 4.2 },
+];
 
-// What he points at: あ, written in pencil, then ringed in red, out along his finger.
-let target;
-const kanaSize = 0.95;
-
-function kana(amount) {
-  if (amount <= 0) return "";
-  const at = (x, y) => [target[0] + x * kanaSize, target[1] + y * kanaSize];
-  const strokes = [
-    line(at(-32, -28), at(30, -33), 4),
-    spline([at(-6, -50), at(-7, -10), at(-3, 22), at(5, 46)], false, 4),
-    spline([at(18, -14), at(4, 20), at(-18, 38), at(-34, 34), at(-34, 14), at(-12, -4), at(22, -6), at(40, 14), at(32, 38), at(10, 50)], false, 5),
-  ];
-  const shown = Math.ceil(strokes.length * amount);
-  return strokes.slice(0, shown).map((stroke) => brush(stroke, 12, 1, { wobble: 1.5, shift: 2, overshoot: 4, heavy: 0.5 })).join("");
-}
-
-function ring(amount) {
-  if (amount <= 0) return "";
-  const loop = Array.from({ length: 41 }, (_, k) => {
-    const a = -2.3 + (k / 40) * Math.PI * 2 * 1.12, r = 1 + 0.05 * Math.sin(k * 0.7);
-    return [target[0] + Math.cos(a) * 76 * r, target[1] + 3 + Math.sin(a) * 66 * r];
-  });
-  const drawn = loop.slice(0, Math.max(2, Math.round(loop.length * amount)));
-  return brush(drawn, 14, 1, { color: red, wobble: 2.5, shift: 2, overshoot: 0 }) + brush(drawn, 7, 0.8, { color: red, wobble: 4, shift: 5, overshoot: 0 });
+function gull({ c, span, beat, drift }, at) {
+  const turn = 2 * Math.PI * at;
+  const [x, y] = [c[0] + Math.sin(turn + drift) * 10, c[1] + Math.cos(2 * turn + drift) * 5];
+  const lift = Math.sin(beat * turn + drift) * 0.45;
+  const wing = (side) => spline([[x, y], [x + side * span * 0.45, y - span * (0.38 + lift * 0.6)], [x + side * span, y - span * (0.08 + lift)]], false, 4);
+  return brush(wing(-1), 8, 0.9, { wobble: 0.5, shift: 0.5, overshoot: 0 }) + brush(wing(1), 8, 0.9, { wobble: 0.5, shift: 0.5, overshoot: 0 });
 }
 
 // The timing, in drawings at 12 a second: he walks in from off the right edge and up the
 // rock, slows to a stop where the statue stands, turns to face us, steps out and points,
-// then turns back and walks on off the left edge; the あ and its ring go as he leaves.
+// then turns back and walks on off the left edge.
 const stopAt = 620;
 const timeline = [];
 const pace = (stride * scale) / cycle;
@@ -535,7 +570,7 @@ let phase = 0;
 function step(amp, extra = {}) {
   x -= amp * pace;
   phase = (phase + amp / cycle) % 1;
-  timeline.push({ x, phase, amp, turn: 0, stance: 0, step: 0, point: 0, kana: 0, ring: 0, fade: 1, ...extra });
+  timeline.push({ x, phase, amp, turn: 0, stance: 0, step: 0, point: 0, ...extra });
 }
 // The foot lifts most halfway through a step; parts of a move start and end at fractions
 // of it, eased, so the arm can lead or follow the foot.
@@ -548,21 +583,18 @@ for (const turn of [0.25, 0.5, 0.75, 1]) step(0, { turn });
 // He steps out, the arm rising with the foot and settling just after it lands.
 for (let i = 1; i <= 8; i++) {
   const t = i / 8, stance = part(t, 0, 0.8);
-  step(0, { turn: 1, stance, step: stepping(stance), point: part(t, 0.15, 1) + 0.05 * Math.sin(Math.PI * part(t, 0.7, 1)), kana: part(t, 0.55, 1) });
+  step(0, { turn: 1, stance, step: stepping(stance), point: part(t, 0.15, 1) + 0.05 * Math.sin(Math.PI * part(t, 0.7, 1)) });
 }
-for (let i = 1; i <= 6; i++) step(0, { turn: 1, point: 1, stance: 1, kana: 1, ring: i / 6 });
-for (let i = 0; i < 16; i++) step(0, { turn: 1, point: 1, stance: 1, kana: 1, ring: 1 });
+for (let i = 0; i < 20; i++) step(0, { turn: 1, point: 1, stance: 1 });
 // Then the arm comes down, the foot steps back in after it, and he turns to go.
 for (let i = 1; i <= 7; i++) {
   const t = i / 7, stance = 1 - part(t, 0.3, 1);
-  step(0, { turn: 1, point: 1 - part(t, 0, 0.7), stance, step: stepping(stance), kana: 1, ring: 1 });
+  step(0, { turn: 1, point: 1 - part(t, 0, 0.7), stance, step: stepping(stance) });
 }
-for (const turn of [0.75, 0.5, 0.25]) step(0, { turn, kana: 1, ring: 1 });
-for (let i = 1; i <= 8; i++) step(smooth(i / 8), { kana: 1, ring: 1 });
-while (x > -260) step(1, { kana: 1, ring: 1 });
-for (const fade of [0.6, 0.3, 0]) timeline.push({ x: -2000, phase, amp: 0, turn: 0, stance: 0, step: 0, point: 0, kana: 1, ring: 1, fade });
-const pointing = { x: stopAt, phase: 0, amp: 0, turn: 1, stance: 1, step: 0, point: 1, kana: 1, ring: 1, fade: 1 };
-target = polar(placed(pointing, figure(pointing).fingertip), pointAngle, 96);
+for (const turn of [0.75, 0.5, 0.25]) step(0, { turn });
+for (let i = 1; i <= 8; i++) step(smooth(i / 8));
+while (x > -260) step(1);
+const pointing = { x: stopAt, phase: 0, amp: 0, turn: 1, stance: 1, step: 0, point: 1 };
 
 const defs = `<filter id="pencil" x="-5%" y="-5%" width="110%" height="110%" color-interpolation-filters="sRGB">
 <feTurbulence type="fractalNoise" baseFrequency="0.9 0.55" numOctaves="3" seed="4" result="grain"/>
@@ -577,10 +609,11 @@ const defs = `<filter id="pencil" x="-5%" y="-5%" width="110%" height="110%" col
 </filter>
 <clipPath id="rock"><path d="${pathOf(rockShape)}"/></clipPath>
 <clipPath id="sky"><path d="${pathOf(skyShape)}"/></clipPath>
+<clipPath id="seaClip"><path d="${pathOf(seaShape)}"/></clipPath>
 `;
 
 // Takes of what holds still that alternate, so its lines boil without every frame being new.
-const takes = [0, 1, 2].map(() => ({ sky: sky(), rock: rock() }));
+const takes = [0, 1, 2].map(() => ({ sky: sky(), sea: sea(), rock: rock() }));
 
 function page(frame, index, size) {
   seed = 1000 + index * 97;
@@ -588,11 +621,11 @@ function page(frame, index, size) {
   const take = takes[Math.floor(index / 2) % takes.length];
   const onScene = frame.x < 1380 && frame.x > -300;
   const him = onScene ? figure(frame) : { clips: "", svg: "" };
-  const marks = `<g opacity="${frame.fade}">${kana(frame.kana)}${ring(frame.ring)}</g>`;
+  const birds = gulls.map((g) => gull(g, (index % timeline.length) / timeline.length)).join("");
   return `<!doctype html><body style="margin:0;background:${paper}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="${size}" height="${size}" style="display:block"><defs>${defs}${him.clips}</defs>
 <rect width="1024" height="1024" fill="${paper}"/><rect width="1024" height="1024" filter="url(#paper)"/>
 <g stroke="none" filter="url(#pencil)">
-${take.sky}${take.rock}${marks}
+${take.sky}${take.sea}${birds}${take.rock}
 ${onScene ? `<g transform="translate(${frame.x.toFixed(1)} ${groundAt(frame.x).toFixed(1)}) scale(${scale})">${him.svg}</g>` : ""}
 </g></svg></body>`;
 }
@@ -606,12 +639,16 @@ for (const [index, frame] of timeline.entries()) {
 }
 await tab.setContent(page(pointing, 0, drawnSize));
 await tab.screenshot({ path: join(work, "still.png") });
+await tab.setContent(page(timeline[0], 0, drawnSize));
+await tab.screenshot({ path: join(work, "first.png") });
 await browser.close();
 
 execFileSync("ffmpeg", ["-v", "error", "-y", "-framerate", String(fps), "-i", join(work, "%04d.png"),
   "-vf", `scale=${outputSize}:${outputSize}:flags=lanczos,${deepen},format=yuv420p`, "-r", "24", "-c:v", "libx264", "-profile:v", "high", "-crf", "22", "-preset", "slow",
   "-an", "-movflags", "+faststart", join(site, "assets/sasu-icon-sketch.mp4")]);
-execFileSync("ffmpeg", ["-v", "error", "-y", "-i", join(work, "still.png"), "-vf", `scale=${outputSize}:${outputSize}:flags=lanczos,${deepen}`, "-q:v", "2", "-update", "1",
-  join(site, "assets/sasu-icon-sketch.jpg")]);
+for (const [still, name] of [["still", "sasu-icon-sketch"], ["first", "sasu-icon-sketch-first"]]) {
+  execFileSync("ffmpeg", ["-v", "error", "-y", "-i", join(work, `${still}.png`), "-vf", `scale=${outputSize}:${outputSize}:flags=lanczos,${deepen}`, "-q:v", "2", "-update", "1",
+    join(site, `assets/${name}.jpg`)]);
+}
 rmSync(work, { recursive: true, force: true });
 console.log(`${timeline.length} drawings, ${(timeline.length / fps).toFixed(1)} s. Installed in ${site}.`);
