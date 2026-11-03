@@ -116,6 +116,58 @@ function hatch(x0, x1, bottom, top, gap, width, tone, opacity, slope = 0.58) {
   return s;
 }
 
+// A drawn outline: one sure line, and a fainter one searching around it, as a pencil
+// drawing from life has. As in Yubi's.
+function contour(points, width = 10, opacity = 1) {
+  return brush(points, width, opacity, { wobble: 1.5, shift: 1, heavy: 0.7, overshoot: 5 })
+    + brush(points, width * 0.45, opacity * 0.4, { wobble: 3, shift: 4, heavy: 0.4, overshoot: 14 });
+}
+
+// Hatching over a region, crossed the other way too where it's `deep`. Each clip is named
+// afresh within a drawing.
+let clips = 0;
+function shading(region, opacity = 0.5, deep = false, gap = 10) {
+  const id = `shade${clips++}`;
+  const xs = region.map((p) => p[0]), ys = region.map((p) => p[1]);
+  const [x0, x1, top, bottom] = [Math.min(...xs) - 10, Math.max(...xs) + 10, Math.min(...ys) - 10, Math.max(...ys) + 10];
+  let s = `<clipPath id="${id}"><path d="${pathOf(region)}"/></clipPath><g clip-path="url(#${id})">`;
+  s += hatch(x0 - (bottom - top) * 0.58, x1, bottom, top, gap, 6, graphite, opacity);
+  if (deep) s += hatch(x0, x1 + (bottom - top) * 0.9, bottom, top, gap * 1.25, 5, graphite, opacity * 0.75, -0.9);
+  return `${s}</g>`;
+}
+
+// A tapering tube along points: its edges, its outline rounded at both ends, and its
+// shadow, on the edge further right, away from the sun at the upper left.
+function tube(points, widths) {
+  const center = spline(points, false, 5);
+  const widthAt = (i) => {
+    const t = (i / (center.length - 1)) * (widths.length - 1), k = Math.min(Math.floor(t), widths.length - 2);
+    return widths[k] + (widths[k + 1] - widths[k]) * (t - k);
+  };
+  const left = [], right = [];
+  center.forEach((p, i) => {
+    const q = center[Math.min(i + 1, center.length - 1)], o = center[Math.max(i - 1, 0)];
+    const d = Math.hypot(q[0] - o[0], q[1] - o[1]) || 1, nx = -(q[1] - o[1]) / d, ny = (q[0] - o[0]) / d, half = widthAt(i) / 2;
+    left.push([p[0] + nx * half, p[1] + ny * half]);
+    right.push([p[0] - nx * half, p[1] - ny * half]);
+  });
+  const cap = (end, toward, half) => {
+    const d = Math.hypot(end[0] - toward[0], end[1] - toward[1]) || 1, u = [(end[0] - toward[0]) / d, (end[1] - toward[1]) / d], n = [-u[1], u[0]];
+    return Array.from({ length: 7 }, (_, k) => { const a = (k / 6) * Math.PI; return [end[0] + (n[0] * Math.cos(a) + u[0] * Math.sin(a)) * half, end[1] + (n[1] * Math.cos(a) + u[1] * Math.sin(a)) * half]; });
+  };
+  const last = center.length - 1;
+  const endCap = cap(center[last], center[last - 1], widthAt(last) / 2);
+  const startCap = cap(center[0], center[1], widthAt(0) / 2);
+  const meanX = (edge) => edge.reduce((sum, p) => sum + p[0], 0) / edge.length;
+  const darkRight = meanX(right) > meanX(left);
+  return {
+    left, right, center, darkRight,
+    outline: [...left, ...endCap, ...[...right].reverse(), ...startCap],
+    edges: [...left, ...endCap, ...[...right].reverse()],
+    shadow: [...center, ...[...(darkRight ? right : left)].reverse()],
+  };
+}
+
 // The scene is laid out as the icon's photo is: the statue's rock sloping down from the
 // left to the right, under a deep sky, filling the square to its edges.
 
@@ -197,64 +249,101 @@ function knee(hip, ankle, side = 1) {
   return [hip[0] + Math.cos(base + bend * side) * thigh, hip[1] + Math.sin(base + bend * side) * thigh];
 }
 
-// An arm or leg: paper under it so it hides what's behind, a tone, and its two edges.
+// An arm or leg, tapering to its end: paper under it so it hides what's behind, shaded on
+// its side away from the sun, and its two edges, the shaded one heavier. Legs, in dark
+// cloth, are toned all over, shaded deeper, and creased at the knee.
 function limb(points, width, tone) {
-  const path = spline(points, false, 4);
-  return `<polyline points="${path.map((p) => p.map((v) => v.toFixed(1)).join(",")).join(" ")}" fill="none" stroke="${paper}" stroke-width="${width}" stroke-linecap="round" stroke-linejoin="round"/>`
-    + brush(path, width * 0.8, 0.75, { color: tone, wobble: 1.5, shift: 1, overshoot: 0, heavy: 0.2 })
-    + brush(offset(path, width / 2), 10, 0.95, { wobble: 1.5, shift: 1, overshoot: 3 })
-    + brush(offset(path, -width / 2), 10, 0.95, { wobble: 1.5, shift: 1, overshoot: 3 });
+  const leg = tone === legTone;
+  const t = tube(points, leg ? [width * 1.12, width * 0.92, width * 0.7] : [width * 1.05, width * 0.76]);
+  let s = `<path d="${pathOf(t.outline)}" fill="${paper}"/>`;
+  if (leg) s += shading(t.outline, 0.22, false, 14);
+  s += shading(t.shadow, leg ? 0.6 : 0.4, leg);
+  s += contour(t.left, t.darkRight ? 7 : 10, 0.95) + contour(t.right, t.darkRight ? 10 : 7, 0.95);
+  if (leg && points.length > 2) {
+    const k = Math.round(t.center.length / 2);
+    s += brush([t.left[k - 2], lerp(t.center[k], t.center[k + 2], 0.5), t.right[k - 2]], 5, 0.6, { wobble: 1, overshoot: 0 });
+  }
+  return s;
 }
 
-// A foot from the ankle, its toe `toward` along the rock.
+// A foot in a sandal from the ankle, its toe `toward` along the rock: the foot, its strap,
+// and the sole under it.
 function foot(ankle, toward, lift = 0) {
-  const toe = [ankle[0] + toward, ankle[1] + 12 - lift * 0.2], heel = [ankle[0] - Math.sign(toward) * 10, ankle[1] + 12];
-  return brush(line(heel, toe, 3), 20, 1, { wobble: 1, shift: 1, overshoot: 2, heavy: 0.3 });
+  const dir = Math.sign(toward), len = Math.abs(toward);
+  const heel = [ankle[0] - dir * 14, ankle[1] + 12], toe = [ankle[0] + toward + dir * 6, ankle[1] + 12 - lift * 0.2];
+  const shape = spline([[ankle[0] - dir * 12, ankle[1] - 8], heel, [toe[0] - dir * 6, toe[1] + 1], [toe[0] + dir * 2, toe[1] - 6], [ankle[0] + dir * len * 0.55, ankle[1] - 2], [ankle[0] + dir * 8, ankle[1] - 10]], true, 4);
+  return `<path d="${pathOf(shape)}" fill="${paper}"/>` + shading(shape, 0.3) + contour(shape, 7)
+    + brush(line(add(ankle, [dir * 4, -6]), add(ankle, [dir * len * 0.5, 6]), 2), 5, 0.8, { wobble: 0.5, overshoot: 0 })
+    + brush(line([heel[0] - dir * 4, heel[1] + 6], [toe[0] + dir * 6, toe[1] + 6], 3), 9, 1, { wobble: 1, shift: 1, overshoot: 2, heavy: 0.2 });
 }
 
 // A kimono sleeve hanging from the upper arm, wide and deep, swinging down with the arm
-// and sagging under it when it's raised. id names its clip for the hatching.
+// and sagging under it when it's raised: the cloth toned, its far half in shadow, its
+// folds running from the arm down to the hem. id names its clip.
 function sleeve(shoulder, elbowAngle, id) {
   const u = [Math.cos((elbowAngle * Math.PI) / 180), Math.sin((elbowAngle * Math.PI) / 180)];
   // Of the two sides of the arm, the one below and behind.
   const n = -u[1] * 0.5 + u[0] > 0 ? [-u[1], u[0]] : [u[1], -u[0]];
   const g = [0, 1];
-  // Hanging, it falls either side of the arm; raised, it sags below it.
+  // Hanging, it falls either side of the arm; raised, it drops below it as a deep drape,
+  // as the statue's does. Its cuff and hem are straight, their corners pinched by a
+  // second point near each, so it hangs as cloth rather than swelling.
   const below = Math.max(0, -u[1]) * 0.6 + Math.abs(u[0]) * 0.6;
-  const near = -32 * (1 - below), far = 52 + 30 * below;
-  const shape = spline([
+  const near = -32 * (1 - below), far = 52 + 70 * below;
+  const [A, B, C, D, E] = [
     along(along(shoulder, n, near * 0.4), u, -6),
     along(along(shoulder, u, 150), n, near),
-    along(along(along(shoulder, u, 146), n, far), g, 18 * below),
-    along(along(along(shoulder, u, 70), n, far + 12), g, 28 * below),
-    along(along(along(shoulder, u, 4), n, far * 0.6), g, 8 * below),
-  ], true, 6);
-  const cuff = [along(along(shoulder, u, 150), n, near), along(along(along(shoulder, u, 146), n, far), g, 18 * below)];
-  return {
-    clip: `<clipPath id="${id}"><path d="${pathOf(shape)}"/></clipPath>`,
-    svg: `<path d="${pathOf(shape)}" fill="${paper}"/><g clip-path="url(#${id})">${hatch(shoulder[0] - 260, shoulder[0] + 200, shoulder[1] + 260, shoulder[1] - 200, 13, 9, robeTone, 0.6)}</g>`
-      + brush(shape, 13, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 }) + brush(line(cuff[0], cuff[1], 3), 7, 0.7, { overshoot: 2 }),
-  };
+    along(along(along(shoulder, u, 140), n, far), g, 30 * below),
+    along(along(along(shoulder, u, 40), n, far + 4), g, 34 * below),
+    along(along(along(shoulder, u, 4), n, far * 0.5), g, 8 * below),
+  ];
+  const shape = spline([A, lerp(A, B, 0.9), B, lerp(B, C, 0.12), lerp(B, C, 0.88), C, lerp(C, D, 0.1), lerp(C, D, 0.9), D, E], true, 4);
+  let svg = `<path d="${pathOf(shape)}" fill="${paper}"/><g clip-path="url(#${id})">`
+    + shading(shape, 0.2, false, 14) + shading([lerp(A, E, 0.35), lerp(B, C, 0.4), C, D, E], 0.55, true) + "</g>";
+  for (const k of [0.3, 0.55, 0.8]) {
+    const from = lerp(A, B, 0.15 + 0.6 * k), to = lerp(D, C, k * 0.9);
+    svg += brush(spline([from, add(lerp(from, to, 0.5), [j(6), j(6)]), to], false, 4), 6, 0.55, { overshoot: 4 });
+  }
+  svg += contour(shape, 12) + brush(line(B, C, 3), 7, 0.7, { overshoot: 2 });
+  return { clip: `<clipPath id="${id}"><path d="${pathOf(shape)}"/></clipPath>`, svg };
 }
 
+// A hand at the wrist along `angle`: a loose fist with the thumb over it, and, pointing,
+// the index finger out straight from the knuckles.
 function hand(wrist, angle, pointing) {
-  const fist = Array.from({ length: 13 }, (_, k) => [wrist[0] + Math.cos(k / 2) * 15, wrist[1] + Math.sin(k / 2) * 15]);
-  let s = `<circle cx="${wrist[0].toFixed(1)}" cy="${wrist[1].toFixed(1)}" r="15" fill="${paper}"/>` + brush(fist, 9, 1, { wobble: 1, shift: 1, overshoot: 0 });
-  if (pointing) s += brush(line(polar(wrist, angle, 8), polar(wrist, angle, 46), 3), 11, 1, { wobble: 1, shift: 1, overshoot: 2, heavy: 0.3 });
-  return s;
+  const knuckles = polar(wrist, angle, 24);
+  const fist = tube([polar(wrist, angle, -4), knuckles], [22, 28]);
+  let s = `<path d="${pathOf(fist.outline)}" fill="${paper}"/>` + shading(fist.shadow, 0.35) + contour(fist.edges, 7);
+  s += brush(line(polar(knuckles, angle + 90, 10), polar(knuckles, angle - 90, 10), 2), 4, 0.6, { wobble: 0.5, overshoot: 0 });
+  if (pointing) {
+    const finger = tube([polar(knuckles, angle, -2), polar(knuckles, angle, 40)], [13, 9]);
+    s += `<path d="${pathOf(finger.outline)}" fill="${paper}"/>` + contour(finger.edges, 6);
+  }
+  const root = polar(wrist, angle, 8);
+  const thumb = tube([root, polar(polar(root, angle, 10), angle + (pointing ? 70 : -70), 10), polar(polar(root, angle, 22), angle + (pointing ? 50 : -50), 8)], [12, 11, 8]);
+  return s + `<path d="${pathOf(thumb.outline)}" fill="${paper}"/>` + contour(thumb.edges, 6);
 }
 
 // The head, close-cropped, on its neck, its nose to the left: ear is where the ear is
-// across it, near the middle side-on and at the back as he looks left facing us.
+// across it, near the middle side-on and at the back as he looks left facing us, the face
+// coming a little round toward us as it goes.
 function head(center, neck, ear) {
-  const skull = Array.from({ length: 25 }, (_, k) => { const a = (k / 24) * Math.PI * 2; return [center[0] + Math.cos(a) * 46, center[1] + Math.sin(a) * 54]; });
-  let s = brush(line(add(center, [-14, 42]), add(neck, [-18, 4]), 3), 8, 0.9, { overshoot: 0 }) + brush(line(add(center, [22, 40]), add(neck, [16, -2]), 3), 8, 0.9, { overshoot: 0 });
-  s += `<path d="${pathOf(skull)}" fill="${paper}"/><g clip-path="url(#head)">${hatch(center[0] - 120, center[0] + 60, center[1] + 60, center[1] - 60, 10, 7, skinTone, 0.6)}`;
-  for (let x = center[0] - 30; x < center[0] + 60; x += 7 + rand() * 3) s += brush(line([x, center[1] - 12 + (x - center[0]) * 0.2], [x + 18, center[1] - 60], 3), 6, 0.75, { wobble: 1, shift: 1, overshoot: 0 });
-  s += "</g>" + brush(skull, 12, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
-  s += brush([add(center, [-40, -2]), add(center, [-53, 12]), add(center, [-40, 18])], 9, 1, { wobble: 1, overshoot: 0 });
-  s += brush(line(add(center, [-26, -6]), add(center, [-20, -6]), 1), 9, 1, { wobble: 0.5, overshoot: 0 });
-  s += brush(Array.from({ length: 6 }, (_, k) => [center[0] + ear + Math.cos(-1.4 + k * 0.6) * 11, center[1] + 6 + Math.sin(-1.4 + k * 0.6) * 13]), 6, 0.85, { wobble: 0.5, overshoot: 0 });
+  const turn = Math.min(1, Math.max(0, (ear - 10) / 22));
+  const at = (x, y) => [center[0] + x * (x < 0 ? 1 - 0.18 * turn : 1 - 0.3 * turn), center[1] + y];
+  const skull = spline([[-6, -58], [22, -52], [42, -30], [46, 0], [38, 26], [24, 44], [6, 52], [-14, 57], [-28, 54], [-36, 42], [-40, 32], [-44, 22], [-55, 11], [-46, 2], [-44, -12], [-42, -28], [-32, -46]].map(([x, y]) => at(x, y)), true, 4);
+  let s = contour([at(-14, 46), add(neck, [-18, 4])], 8, 0.9) + contour([at(24, 38), add(neck, [16, -2])], 9, 0.9);
+  s += `<path d="${pathOf(skull)}" fill="${paper}"/><g clip-path="url(#head)">`;
+  // The cropped hair, above a line from the forehead round the ear to the nape.
+  s += shading([at(-36, -42), at(-16, -30), at(ear - 14, -12), at(ear - 8, 14), at(ear + 14, 26), at(40, 34), at(90, 34), at(90, -90), at(-60, -90)].map((p) => p), 0.6, false, 7);
+  // Shade under the jaw and down the back of the neck.
+  s += shading([at(-10, 46), at(36, 20), at(70, 60), at(-10, 70)], 0.4);
+  s += "</g>" + contour(skull, 11);
+  // The brow, the eye, the nostril, the mouth, and the ear.
+  s += brush([at(-44, -14), at(-36, -18), at(-24, -17)], 6, 0.9, { wobble: 0.5, overshoot: 0 });
+  s += brush([at(-34, -5), at(-28, -7), at(-22, -4)], 6, 1, { wobble: 0.5, overshoot: 0 });
+  s += brush([at(-46, 13), at(-40, 16)], 5, 0.8, { wobble: 0.5, overshoot: 0 });
+  s += brush([at(-40, 31), at(-32, 33), at(-24, 30)], 5, 0.85, { wobble: 0.5, overshoot: 0 });
+  s += brush(Array.from({ length: 7 }, (_, k) => [center[0] + ear * (1 - 0.3 * turn) + Math.cos(-1.4 + k * 0.5) * 10, center[1] + 4 + Math.sin(-1.4 + k * 0.5) * 14]), 6, 0.9, { wobble: 0.5, overshoot: 0 });
   return { clip: `<clipPath id="head"><path d="${pathOf(skull)}"/></clipPath>`, svg: s };
 }
 
@@ -297,14 +386,15 @@ function walker(pose) {
     add(shoulder, [-30, 4]), add(hip, [-50, -80]), add(hip, [-58, -10]), add(hip, [-72 + sway, 150]), add(hip, [-6 + sway, 160]),
     add(hip, [66 + sway, 146]), add(hip, [58, -20]), add(hip, [52, -120]), add(shoulder, [42, 14]), add(shoulder, [12, -8]),
   ], true, 6);
+  // The cloth toned lightly all over, his back in shadow away from the sun, and the folds of
+  // the skirt swinging from the sash as he walks.
   s += `<path d="${pathOf(robe)}" fill="${paper}"/><g clip-path="url(#robe)">`
-    + hatch(hip[0] - 380, hip[0] + 120, hip[1] + 170, shoulder[1] - 20, 12, 10, robeTone, 0.7);
-  // Pencil shade down the front and low on the back, crossed the other way.
-  for (let x = hip[0] - 80; x < hip[0] + 90; x += 11 + rand() * 4) {
-    const top = hip[1] + 30 + rand() * 40;
-    s += brush(line([x + 70, hip[1] + 170], [x + 70 - (hip[1] + 170 - top) * 0.72, top], 3), 6, 0.6, { wobble: 1.5, shift: 1, overshoot: 2 });
+    + shading([add(hip, [-200, -300]), add(hip, [200, -300]), add(hip, [200, 220]), add(hip, [-200, 220])], 0.2, false, 14)
+    + shading([add(hip, [16, -300]), add(hip, [200, -300]), add(hip, [200, 220]), add(hip, [4 + sway, 220]), add(hip, [22, 0])], 0.55, true)
+    + "</g>" + contour(robe, 13);
+  for (const [top, bottom, reach] of [[-34, -50, 150], [-2, -12, 158], [20, 26, 150]]) {
+    s += brush(spline([add(hip, [top, 6]), add(hip, [(top + bottom) / 2 + sway * 0.4, 80]), add(hip, [bottom + sway, reach])], false, 4), 5, 0.5, { overshoot: 4 });
   }
-  s += "</g>" + brush(robe, 14, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
   s += brush(spline([add(hip, [-14, -4]), add(hip, [-26 + sway * 0.5, 70]), add(hip, [-34 + sway, 150])], false, 4), 7, 0.7, { overshoot: 2 });
   s += brush(spline([add(hip, [34, 0]), add(hip, [40 + sway * 0.5, 80]), add(hip, [44 + sway, 142])], false, 4), 7, 0.6, { overshoot: 2 });
   // The sash and the crossed collar.
@@ -358,13 +448,15 @@ function stander(pose) {
     [X(-80), top + 8], [X(-70), top + 70], [X(-56), hipY - 40], [X(-70) - 70 * wide, hipY + 140], [X(-28) - 30 * wide, hipY + 160],
     [X(36) + 14 * wide, hipY + 172], [X(70) + 34 * wide, hipY + 158], [X(56), hipY - 40], [X(70), top + 70], [X(80), top + 8], [X(24), top - 4], [X(-24), top - 4],
   ], true, 6);
-  s += `<path d="${pathOf(robe)}" fill="${paper}"/><g clip-path="url(#robe)">` + hatch(-420, 200, hipY + 190, top - 20, 12, 10, robeTone, 0.7);
-  // Pencil shade on his left, away from the sun, crossed the other way.
-  for (let x = X(10); x < X(90) + 40 * wide; x += 10 + rand() * 4) {
-    const from = hipY + 190, upTo = top + 60 + rand() * 60;
-    s += brush(line([x + 60, from], [x + 60 - (from - upTo) * 0.3, upTo], 3), 6, 0.6, { wobble: 1.5, shift: 1, overshoot: 2 });
+  // The cloth toned lightly all over, his left in shadow away from the sun, and the folds
+  // of the skirt falling from the sash, spreading as he steps out.
+  s += `<path d="${pathOf(robe)}" fill="${paper}"/><g clip-path="url(#robe)">`
+    + shading([[-260, top - 40], [260, top - 40], [260, hipY + 220], [-260, hipY + 220]], 0.2, false, 14)
+    + shading([[X(16), top - 40], [260, top - 40], [260, hipY + 220], [X(30) + 10 * wide, hipY + 220], [X(10), hipY]], 0.55, true)
+    + "</g>" + contour(robe, 13);
+  for (const [from, to] of [[-40, -60 - 40 * wide], [-12, -20 - 20 * wide], [14, 18 + 10 * wide], [40, 56 + 30 * wide]]) {
+    s += brush(spline([[X(from), hipY - 8], [X((from + to) / 2), hipY + 80], [X(to), hipY + 156]], false, 4), 5, 0.5, { overshoot: 4 });
   }
-  s += "</g>" + brush(robe, 14, 1, { wobble: 1.5, heavy: 0.5, overshoot: 4 });
   s += brush(spline([[X(-22), top - 2], [X(-30), hipY - 30], [X(-40) - 30 * wide, hipY + 152]], false, 4), 8, 0.9, { overshoot: 2 });
   s += brush(spline([[X(22), top - 2], [X(32), hipY - 30], [X(44) + 16 * wide, hipY + 166]], false, 4), 8, 0.9, { overshoot: 2 });
   s += brush(line([X(-18), top], [X(8), top + 76], 3), 7, 0.85, { overshoot: 0 }) + brush(line([X(18), top], [X(-2), top + 62], 3), 7, 0.85, { overshoot: 0 });
@@ -492,6 +584,7 @@ const takes = [0, 1, 2].map(() => ({ sky: sky(), rock: rock() }));
 
 function page(frame, index, size) {
   seed = 1000 + index * 97;
+  clips = 0;
   const take = takes[Math.floor(index / 2) % takes.length];
   const onScene = frame.x < 1380 && frame.x > -300;
   const him = onScene ? figure(frame) : { clips: "", svg: "" };
