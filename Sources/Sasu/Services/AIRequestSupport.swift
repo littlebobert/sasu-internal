@@ -200,6 +200,38 @@ enum AIRequestSupport {
         return parts.joined(separator: "\n")
     }
 
+    static func buildJapaneseReadingsPrompt(sourceText: String) -> String {
+        """
+        Task: add furigana readings to Japanese text.
+
+        Source text:
+        \(sourceText)
+
+        Split the source text into consecutive segments and return a JSON object only, with this shape:
+        {"segments":[{"text":"土曜日","reading":"どようび"},{"text":"に","reading":null},{"text":"行","reading":"い"},{"text":"きます","reading":null}]}
+
+        Rules:
+        - Joining every segment's text in order must reproduce the source text exactly, character for character, including spaces, punctuation, and line breaks. Do not correct, normalize, translate, or drop anything.
+        - Give a reading only to segments that contain kanji. Every other segment's reading is null.
+        - Keep okurigana out of the kanji segment when you can, as in 行 (い) followed by きます.
+        - Give one segment for a whole kanji compound, such as 日本語 (にほんご), not one per kanji.
+        - Write readings in hiragana only, as the word is actually read in this context, including sound changes such as 土曜日 (どようび), and context-dependent readings such as 一日 (ついたち) when it means the first of the month.
+        """
+    }
+
+    static func parseJapaneseReadings(
+        from text: String,
+        sourceText: String
+    ) -> [RubyTextSegment]? {
+        let candidateJSON = jsonCandidate(from: text.trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let data = candidateJSON.data(using: .utf8),
+              let envelope = try? JSONDecoder().decode(ReadingsEnvelope.self, from: data) else {
+            return nil
+        }
+
+        return JapaneseReadingService.validatedModelReadings(envelope.segments, for: sourceText)
+    }
+
     static func parseAssistantResult(from text: String) -> AssistantResult {
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidateJSON = jsonCandidate(from: trimmedText)
@@ -357,6 +389,10 @@ enum AIRequestSupport {
 
         return text
     }
+}
+
+private struct ReadingsEnvelope: Decodable {
+    let segments: [RubyTextSegment]
 }
 
 private struct AssistantResultEnvelope: Decodable {

@@ -112,6 +112,37 @@ struct AnthropicClient {
         }
     }
 
+    func requestJapaneseReadings(
+        credential: AIRequestCredential,
+        modelID: String,
+        reasoningEffort: String,
+        sourceText: String
+    ) async throws -> String {
+        let requestBody = MessagesRequest(
+            model: modelID,
+            maxTokens: Self.defaultMaxTokens,
+            stream: true,
+            messages: [
+                MessagesMessage(
+                    role: "user",
+                    content: [
+                        .text(AIRequestSupport.buildJapaneseReadingsPrompt(sourceText: sourceText))
+                    ]
+                )
+            ],
+            outputConfig: Self.outputConfig(effort: reasoningEffort)
+        )
+
+        return try await AIRequestSupport.mappingURLCancellation {
+            try await sendMessagesRequest(
+                credential: credential,
+                requestBody: requestBody,
+                logSummary: "readings model=\(modelID), effort=\(reasoningEffort), sourceCharacters=\(sourceText.count)",
+                onPartialText: nil
+            )
+        }
+    }
+
     private func sendMessagesRequest(
         credential: AIRequestCredential,
         requestBody: MessagesRequest,

@@ -338,6 +338,16 @@ struct SettingsView: View {
                 }
                 .labelsHidden()
                 .frame(maxWidth: 360)
+
+                if appModel.selectedModelPreset.supportsUltrafast {
+                    Toggle("Ultrafast", isOn: $appModel.usesUltrafast)
+                        .toggleStyle(.checkbox)
+
+                    Text("Answers arrive faster, at about three times the cost of Fast.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             .padding(.vertical, 4)
             .frame(maxWidth: .infinity, alignment: .leading)

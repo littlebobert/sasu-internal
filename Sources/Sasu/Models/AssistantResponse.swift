@@ -82,8 +82,10 @@ struct ChatTranscriptMessage: Identifiable, Equatable {
         self.actionSuggestion = actionSuggestion
     }
 
+    // Readings can be replaced after the message is shown, so they count
+    // toward equality and SwiftUI redraws the row when they change.
     static func == (lhs: ChatTranscriptMessage, rhs: ChatTranscriptMessage) -> Bool {
-        lhs.id == rhs.id
+        lhs.id == rhs.id && lhs.sourceReadings == rhs.sourceReadings
     }
 
     var image: NSImage? {

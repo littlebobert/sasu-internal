@@ -54,6 +54,12 @@ final class AppModel: ObservableObject {
             )
         }
     }
+    @Published var usesUltrafast: Bool {
+        didSet { defaults.set(usesUltrafast, forKey: Self.usesUltrafastKey) }
+    }
+    @Published var showsFurigana: Bool {
+        didSet { defaults.set(showsFurigana, forKey: Self.showsFuriganaKey) }
+    }
     @Published var transcriptTextSize: Double {
         didSet {
             let clampedSize = Self.clampedTranscriptTextSize(transcriptTextSize)
@@ -158,6 +164,8 @@ final class AppModel: ObservableObject {
     private static let includeOriginalTextDuringTranslateAndReplaceKey =
         "includeOriginalTextDuringTranslateAndReplace"
     private static let transcriptTextSizeKey = "transcriptTextSize"
+    private static let showsFuriganaKey = "showsFurigana"
+    private static let usesUltrafastKey = "usesUltrafast"
     private static let hasAnsweredSafariPageCapturePrimerKey = "hasAnsweredSafariPageCapturePrimer"
     private static let safariPageSendConfirmationCharacterThreshold = 8_000
     private static let selectedModelPresetIDKey = "selectedModelPresetID"
@@ -215,6 +223,7 @@ final class AppModel: ObservableObject {
     private var translateAndReplaceHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
+    private var modelReadingTasks: [UUID: Task<Void, Never>] = [:]
     private var isReceivingStreamedAnswer = false
     private lazy var streamingUpdateCoalescer = StreamingUpdateCoalescer<String> { [weak self] partialAnswer in
         self?.streamingResponseText = partialAnswer
@@ -279,15 +288,15 @@ final class AppModel: ObservableObject {
         if let savedModelID, !Self.retiredModelAliases.contains(savedModelID) {
             initialModelID = savedModelID
         } else {
-            initialModelID = ModelPreset.gpt56HighFast.modelID
-            defaults.set(ModelPreset.gpt56HighFast.modelID, forKey: Self.modelIDKey)
+            initialModelID = ModelPreset.defaultPreset.modelID
+            defaults.set(ModelPreset.defaultPreset.modelID, forKey: Self.modelIDKey)
         }
-        let initialReasoningEffort = defaults.string(forKey: Self.reasoningEffortKey) ?? ModelPreset.gpt56HighFast.reasoningEffort
-        let initialServiceTier = defaults.string(forKey: Self.serviceTierKey) ?? ModelPreset.gpt56HighFast.serviceTier
+        let initialReasoningEffort = defaults.string(forKey: Self.reasoningEffortKey) ?? ModelPreset.defaultPreset.reasoningEffort
+        let initialServiceTier = defaults.string(forKey: Self.serviceTierKey) ?? ModelPreset.defaultPreset.serviceTier
         self.modelID = initialModelID
         self.reasoningEffort = initialReasoningEffort
         self.serviceTier = initialServiceTier
-        self.imageDetail = defaults.string(forKey: Self.imageDetailKey) ?? ModelPreset.gpt56HighFast.imageDetail
+        self.imageDetail = defaults.string(forKey: Self.imageDetailKey) ?? ModelPreset.defaultPreset.imageDetail
         if defaults.object(forKey: Self.automaticallyIncludeSafariPageContentKey) == nil {
             self.automaticallyIncludeSafariPageContent = true
         } else {
@@ -310,6 +319,8 @@ final class AppModel: ObservableObject {
         self.includeOriginalTextDuringTranslateAndReplace = defaults.bool(
             forKey: Self.includeOriginalTextDuringTranslateAndReplaceKey
         )
+        self.showsFurigana = defaults.object(forKey: Self.showsFuriganaKey) as? Bool ?? true
+        self.usesUltrafast = defaults.bool(forKey: Self.usesUltrafastKey)
         if defaults.object(forKey: Self.transcriptTextSizeKey) == nil {
             self.transcriptTextSize = Self.defaultTranscriptTextSize
         } else {
@@ -955,7 +966,7 @@ final class AppModel: ObservableObject {
                 credential: credential,
                 modelID: modelID,
                 reasoningEffort: reasoningEffort,
-                serviceTier: serviceTier,
+                serviceTier: requestServiceTier,
                 imageDetail: imageDetail,
                 translationSourceLanguage: translationSourceLanguage,
                 prompt: prompt,
@@ -996,7 +1007,7 @@ final class AppModel: ObservableObject {
                 credential: credential,
                 modelID: modelID,
                 reasoningEffort: Self.translationReasoningEffort,
-                serviceTier: serviceTier,
+                serviceTier: requestServiceTier,
                 sourceText: sourceText,
                 translationDirection: translationDirection,
                 conversationContext: conversationContext,
@@ -1017,8 +1028,107 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // Longer text costs more to annotate than the furigana is worth; it keeps
+    // the local macOS readings.
+    private static let modelReadingsMaxSourceCharacters = 2_000
+
+    /// The source text shows plain at once; this asks the model for
+    /// furigana in the background and adds them if they line up exactly
+    /// with the source text.
+    private func addReadingsFromModel(
+        messageID: UUID,
+        sourceText: String,
+        credential: AIRequestCredential
+    ) {
+        guard translationSourceLanguage == .japanese,
+              JapaneseReadingService.containsKanji(sourceText),
+              sourceText.count <= Self.modelReadingsMaxSourceCharacters else {
+            return
+        }
+
+        let provider = selectedModelPreset.provider
+        let modelID = modelID
+        let serviceTier = requestServiceTier
+        let startedAt = Date()
+        modelReadingTasks[messageID]?.cancel()
+        modelReadingTasks[messageID] = Task { [weak self] in
+            defer { self?.modelReadingTasks[messageID] = nil }
+            do {
+                let rawText: String
+                switch provider {
+                case .openAI:
+                    guard let client = self?.openAIClient else { return }
+                    rawText = try await client.requestJapaneseReadings(
+                        credential: credential,
+                        modelID: modelID,
+                        reasoningEffort: Self.translationReasoningEffort,
+                        serviceTier: serviceTier,
+                        sourceText: sourceText
+                    )
+                case .anthropic:
+                    guard let client = self?.anthropicClient else { return }
+                    rawText = try await client.requestJapaneseReadings(
+                        credential: credential,
+                        modelID: modelID,
+                        reasoningEffort: Self.translationReasoningEffort,
+                        sourceText: sourceText
+                    )
+                }
+                try Task.checkCancellation()
+
+                let elapsed = String(format: "%.2f", Date().timeIntervalSince(startedAt))
+                guard let modelReadings = AIRequestSupport.parseJapaneseReadings(
+                    from: rawText,
+                    sourceText: sourceText
+                ) else {
+                    DiagnosticLogger.log(
+                        "Model readings rejected; showing plain text. sourceCharacters=\(sourceText.count) responseCharacters=\(rawText.count) seconds=\(elapsed)",
+                        category: "Readings"
+                    )
+                    return
+                }
+
+                self?.replaceSourceReadings(messageID: messageID, with: modelReadings)
+                DiagnosticLogger.log(
+                    "Applied model readings. sourceCharacters=\(sourceText.count) segmentsWithReadings=\(modelReadings.filter { $0.reading != nil }.count) seconds=\(elapsed)",
+                    category: "Readings"
+                )
+            } catch is CancellationError {
+                return
+            } catch {
+                DiagnosticLogger.log(
+                    "Model readings failed; showing plain text. error=\(error.localizedDescription)",
+                    category: "Readings"
+                )
+            }
+        }
+    }
+
+    private func replaceSourceReadings(messageID: UUID, with readings: [RubyTextSegment]) {
+        guard let index = transcriptMessages.firstIndex(where: { $0.id == messageID }) else { return }
+
+        let existingMessage = transcriptMessages[index]
+        guard existingMessage.sourceReadings != readings else { return }
+        transcriptMessages[index] = ChatTranscriptMessage(
+            id: existingMessage.id,
+            role: existingMessage.role,
+            text: existingMessage.text,
+            imageData: existingMessage.imageData,
+            browserPageContext: existingMessage.browserPageContext,
+            browserPageCaptureIssue: existingMessage.browserPageCaptureIssue,
+            sourceReadings: readings,
+            sourceKind: existingMessage.sourceKind,
+            actionSuggestion: existingMessage.actionSuggestion
+        )
+    }
+
+    private func cancelModelReadingTasks() {
+        modelReadingTasks.values.forEach { $0.cancel() }
+        modelReadingTasks.removeAll()
+    }
+
     func resetModelToDefault() {
-        let defaultPreset = availableModelPresets.first ?? ModelPreset.gpt56HighFast
+        let defaultPreset = availableModelPresets.first ?? ModelPreset.defaultPreset
         selectedModelPresetID = defaultPreset.id
         applySelectedModelPreset()
         errorMessage = nil
@@ -1027,6 +1137,13 @@ final class AppModel: ObservableObject {
 
     var selectedModelPreset: ModelPreset {
         ModelPreset.preset(id: selectedModelPresetID)
+    }
+
+    /// The preset's tier, unless Ultrafast is on and the model offers it.
+    private var requestServiceTier: String {
+        usesUltrafast && selectedModelPreset.supportsUltrafast
+            ? ModelPreset.ultrafastServiceTier
+            : serviceTier
     }
 
     private func applySelectedModelPreset() {
@@ -1040,19 +1157,15 @@ final class AppModel: ObservableObject {
     private func ensureModelPresetMatchesAccessMode() {
         let availableIDs = Set(availableModelPresets.map(\.id))
         guard !availableIDs.contains(selectedModelPresetID) else { return }
-        selectedModelPresetID = availableModelPresets.first?.id ?? ModelPreset.gpt56HighFast.id
+        selectedModelPresetID = availableModelPresets.first?.id ?? ModelPreset.defaultPreset.id
     }
 
     private static func availablePresetID(_ presetID: String?) -> String? {
         guard let presetID else { return nil }
-        switch presetID {
-        case "gpt55High", "gpt55HighFast":
-            return ModelPreset.gpt56HighFast.id
-        case "gpt55MediumFast":
-            return ModelPreset.gpt56MediumFast.id
-        default:
-            return ModelPreset.all.contains { $0.id == presetID } ? presetID : nil
+        if let replacementID = ModelPreset.replacementID(forRetiredPresetID: presetID) {
+            return replacementID
         }
+        return ModelPreset.all.contains { $0.id == presetID } ? presetID : nil
     }
 
     private static func clampedTranscriptTextSize(_ size: Double) -> Double {
@@ -1363,6 +1476,7 @@ final class AppModel: ObservableObject {
     }
 
     func clearTranscript() {
+        cancelModelReadingTasks()
         transcriptMessages.removeAll()
         lastResponse = nil
         errorMessage = nil
@@ -2233,28 +2347,26 @@ final class AppModel: ObservableObject {
         currentHighlightSuggestion = nil
         hideHighlight()
         statusMessage = String(localized: "Reading clipboard...")
-        Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+        Self.logger.info("Starting clipboard translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.requestServiceTier, privacy: .public)")
 
         do {
             try Task.checkCancellation()
             let sourceText = try clipboardTextService.readText()
             let conversationContext = transcriptContextForRequest()
-            let sourceReadings = JapaneseReadingService.readings(for: sourceText)
-            let readingCount = sourceReadings?.filter { $0.reading?.isEmpty == false }.count ?? 0
-            DiagnosticLogger.log(
-                "Generated local clipboard readings. sourceCharacters=\(sourceText.count) readingSegments=\(sourceReadings?.count ?? 0) segmentsWithReadings=\(readingCount)",
-                category: "Readings"
-            )
             let sourceMessage = ChatTranscriptMessage(
                 role: .user,
                 text: sourceText,
-                sourceReadings: sourceReadings,
                 sourceKind: .clipboard
             )
             transcriptMessages.append(sourceMessage)
 
             try Task.checkCancellation()
             let credential = try requestCredential()
+            addReadingsFromModel(
+                messageID: sourceMessage.id,
+                sourceText: sourceText,
+                credential: credential
+            )
 
             statusMessage = String(localized: "Translating clipboard...")
             cursorProgressOverlayController.show(status: String(localized: "Translating…"))
@@ -2280,8 +2392,8 @@ final class AppModel: ObservableObject {
             )
             transcriptMessages.append(ChatTranscriptMessage(role: .assistant, text: translation))
             statusMessage = String(localized: "Clipboard translation ready.")
-            DiagnosticLogger.log("Clipboard translation ready. sourceCharacters=\(sourceText.count) localSegmentsWithReadings=\(readingCount)", category: "OpenAI")
-            Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count), localSegmentsWithReadings=\(readingCount)")
+            DiagnosticLogger.log("Clipboard translation ready. sourceCharacters=\(sourceText.count)", category: "OpenAI")
+            Self.logger.info("Clipboard translation ready. sourceCharacters=\(sourceText.count), answerCharacters=\(translation.count)")
         } catch is CancellationError {
             statusMessage = String(localized: "Request stopped.")
             errorMessage = nil
@@ -2332,20 +2444,20 @@ final class AppModel: ObservableObject {
                 statusMessage = String(localized: "No selection found in the previous app. Translating clipboard...")
             }
 
-            let sourceReadings = translationSourceLanguage == .japanese
-                ? JapaneseReadingService.readings(for: sourceText)
-                : nil
-            transcriptMessages.append(
-                ChatTranscriptMessage(
-                    role: .user,
-                    text: sourceText,
-                    sourceReadings: sourceReadings,
-                    sourceKind: .selection
-                )
+            let sourceMessage = ChatTranscriptMessage(
+                role: .user,
+                text: sourceText,
+                sourceKind: .selection
             )
+            transcriptMessages.append(sourceMessage)
 
             try Task.checkCancellation()
             let credential = try requestCredential()
+            addReadingsFromModel(
+                messageID: sourceMessage.id,
+                sourceText: sourceText,
+                credential: credential
+            )
             statusMessage = String(localized: "Translating selected text...")
             cursorProgressOverlayController.update(status: String(localized: "Translating…"))
             answerWindowController.show(appModel: self)
@@ -2414,7 +2526,7 @@ final class AppModel: ObservableObject {
         errorMessage = nil
         shouldOfferPermissionRelaunch = false
         statusMessage = String(localized: "Translating selection...")
-        Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public)")
+        Self.logger.info("Starting selection translation flow. model=\(self.modelID, privacy: .public), reasoning=\(Self.translationReasoningEffort, privacy: .public), serviceTier=\(self.requestServiceTier, privacy: .public)")
         let startedAt = Date()
         DiagnosticLogger.log(
             "Translate & Replace started. model=\(modelID) reasoning=\(Self.translationReasoningEffort) frontmostBundle=\(NSWorkspace.shared.frontmostApplication?.bundleIdentifier ?? "unknown")",
@@ -2549,7 +2661,7 @@ final class AppModel: ObservableObject {
                     ? String(localized: "Analyzing image...")
                     : String(localized: "Sending follow-up..."))
                 : String(localized: "Capturing screen..."))
-        Self.logger.info("Starting capture flow. reuseLastScreenshot=\(reuseLastScreenshot), model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.serviceTier, privacy: .public), imageDetail=\(self.imageDetail, privacy: .public)")
+        Self.logger.info("Starting capture flow. reuseLastScreenshot=\(reuseLastScreenshot), model=\(self.modelID, privacy: .public), reasoning=\(self.reasoningEffort, privacy: .public), serviceTier=\(self.requestServiceTier, privacy: .public), imageDetail=\(self.imageDetail, privacy: .public)")
         let conversationContext = mode == .question ? transcriptContextForRequest() : nil
         if mode.showsCaptureDetailsInTranscript {
             transcriptMessages.append(ChatTranscriptMessage(role: .user, text: prompt))
@@ -2603,14 +2715,16 @@ final class AppModel: ObservableObject {
                let sourceText = result.sourceText?
                 .trimmingCharacters(in: .whitespacesAndNewlines),
                !sourceText.isEmpty {
-                let sourceReadings = JapaneseReadingService.readings(for: sourceText)
-                transcriptMessages.append(
-                    ChatTranscriptMessage(
-                        role: .user,
-                        text: sourceText,
-                        sourceReadings: sourceReadings,
-                        sourceKind: .selection
-                    )
+                let sourceMessage = ChatTranscriptMessage(
+                    role: .user,
+                    text: sourceText,
+                    sourceKind: .selection
+                )
+                transcriptMessages.append(sourceMessage)
+                addReadingsFromModel(
+                    messageID: sourceMessage.id,
+                    sourceText: sourceText,
+                    credential: credential
                 )
             }
 

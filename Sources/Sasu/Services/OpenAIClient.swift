@@ -114,6 +114,38 @@ struct OpenAIClient {
         }
     }
 
+    func requestJapaneseReadings(
+        credential: AIRequestCredential,
+        modelID: String,
+        reasoningEffort: String,
+        serviceTier: String,
+        sourceText: String
+    ) async throws -> String {
+        let requestBody = ResponsesRequest(
+            model: modelID,
+            input: [
+                ResponsesInput(
+                    role: "user",
+                    content: [
+                        .inputText(AIRequestSupport.buildJapaneseReadingsPrompt(sourceText: sourceText))
+                    ]
+                )
+            ],
+            reasoning: Self.reasoningConfiguration(modelID: modelID, effort: reasoningEffort),
+            serviceTier: Self.serviceTierParameter(serviceTier),
+            stream: true
+        )
+
+        return try await AIRequestSupport.mappingURLCancellation {
+            try await sendResponsesRequest(
+                credential: credential,
+                requestBody: requestBody,
+                logSummary: "readings model=\(modelID), reasoning=\(reasoningEffort), serviceTier=\(serviceTier), sourceCharacters=\(sourceText.count)",
+                onPartialText: nil
+            )
+        }
+    }
+
     private func sendResponsesRequest(
         credential: AIRequestCredential,
         requestBody: ResponsesRequest,

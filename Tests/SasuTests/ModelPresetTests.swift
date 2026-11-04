@@ -2,34 +2,44 @@ import XCTest
 @testable import Sasu
 
 final class ModelPresetTests: XCTestCase {
-    func testBestPresetUsesGPT56HighPriority() {
-        let preset = ModelPreset.gpt56HighFast
+    func testOpenAIPresetsAreSolAstraAnd56AtMediumPriority() {
+        let openAIPresets = ModelPreset.all.filter { $0.provider == .openAI }
 
-        XCTAssertEqual(preset.provider, .openAI)
-        XCTAssertEqual(preset.modelID, "gpt-5.6")
-        XCTAssertEqual(preset.reasoningEffort, "high")
-        XCTAssertEqual(preset.serviceTier, "priority")
-        XCTAssertEqual(preset.imageDetail, "high")
+        XCTAssertEqual(openAIPresets.map(\.modelID), ["gpt-6.1-sol", "gpt-6-astra", "gpt-5.6"])
+        for preset in openAIPresets {
+            XCTAssertEqual(preset.reasoningEffort, "medium", preset.id)
+            XCTAssertEqual(preset.serviceTier, "priority", preset.id)
+            XCTAssertEqual(preset.imageDetail, "high", preset.id)
+        }
     }
 
-    func testBetterPresetUsesGPT56MediumPriority() {
-        let preset = ModelPreset.gpt56MediumFast
-
-        XCTAssertEqual(preset.provider, .openAI)
-        XCTAssertEqual(preset.modelID, "gpt-5.6")
-        XCTAssertEqual(preset.reasoningEffort, "medium")
-        XCTAssertEqual(preset.serviceTier, "priority")
-        XCTAssertEqual(preset.imageDetail, "high")
+    func testUltrafastIsOfferedOnlyOnSolAndAstra() {
+        XCTAssertTrue(ModelPreset.gpt61SolMediumFast.supportsUltrafast)
+        XCTAssertTrue(ModelPreset.gpt6AstraMediumFast.supportsUltrafast)
+        XCTAssertFalse(ModelPreset.gpt56MediumFast.supportsUltrafast)
+        XCTAssertFalse(ModelPreset.opus55Best.supportsUltrafast)
+        XCTAssertFalse(ModelPreset.fable51Better.supportsUltrafast)
     }
 
-    func testOpus5BestPresetUsesClaudeOpus5() {
-        let preset = ModelPreset.opus5Best
+    func testAnthropicPresetsAreOpus55ThenFable51() {
+        let anthropicPresets = ModelPreset.all.filter { $0.provider == .anthropic }
 
-        XCTAssertEqual(preset.provider, .anthropic)
-        XCTAssertEqual(preset.modelID, "claude-opus-5")
-        XCTAssertEqual(preset.reasoningEffort, "high")
-        XCTAssertEqual(preset.serviceTier, "auto")
-        XCTAssertEqual(preset.imageDetail, "high")
-        XCTAssertTrue(ModelPreset.all.contains(preset))
+        XCTAssertEqual(anthropicPresets.map(\.modelID), ["claude-opus-5-5", "claude-fable-5-1"])
+        for preset in anthropicPresets {
+            XCTAssertEqual(preset.serviceTier, "auto", preset.id)
+        }
+    }
+
+    func testDefaultPresetIsBestOpenAI() {
+        XCTAssertEqual(ModelPreset.defaultPreset, .gpt61SolMediumFast)
+        XCTAssertEqual(ModelPreset.preset(id: "unknown"), .gpt61SolMediumFast)
+    }
+
+    func testRetiredPresetIDsMoveToTheirReplacements() {
+        XCTAssertEqual(ModelPreset.replacementID(forRetiredPresetID: "gpt56HighFast"), ModelPreset.gpt61SolMediumFast.id)
+        XCTAssertEqual(ModelPreset.replacementID(forRetiredPresetID: "gpt55HighFast"), ModelPreset.gpt61SolMediumFast.id)
+        XCTAssertEqual(ModelPreset.replacementID(forRetiredPresetID: "gpt55MediumFast"), ModelPreset.gpt56MediumFast.id)
+        XCTAssertEqual(ModelPreset.replacementID(forRetiredPresetID: "opus5Best"), ModelPreset.opus55Best.id)
+        XCTAssertNil(ModelPreset.replacementID(forRetiredPresetID: ModelPreset.gpt56MediumFast.id))
     }
 }

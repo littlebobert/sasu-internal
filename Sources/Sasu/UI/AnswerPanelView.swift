@@ -140,6 +140,12 @@ struct AnswerPanelView: View {
 
                 Spacer()
 
+                Toggle("Furigana", isOn: $appModel.showsFurigana)
+                    .toggleStyle(.checkbox)
+                    .font(.caption)
+                    .fixedSize()
+                    .help("Show readings above kanji")
+
                 if appModel.isRequestInFlight {
                     ProgressView()
                         .controlSize(.small)
@@ -697,7 +703,8 @@ private struct TranscriptMessageView: View {
     }
 
     private var usefulSourceReadings: [RubyTextSegment]? {
-        guard let sourceReadings = message.sourceReadings,
+        guard appModel.showsFurigana,
+              let sourceReadings = message.sourceReadings,
               sourceReadings.contains(where: { $0.reading?.isEmpty == false }) else {
             return nil
         }
