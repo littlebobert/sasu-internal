@@ -47,15 +47,11 @@ private struct AboutView: View {
         Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.3"
     }
 
-    private var appIcon: NSImage {
-        NSWorkspace.shared.icon(forFile: Bundle.main.bundlePath)
-    }
-
     var body: some View {
         VStack(spacing: 5) {
-            Image(nsImage: appIcon)
-                .resizable()
-                .frame(width: 60, height: 60)
+            // The size of the art in the 60-point app icon this replaced, so the layout holds.
+            AnimatedAppIcon(name: "sasu-icon-sketch", firstFrameName: "sasu-icon-sketch-first", size: 50)
+                .padding(5)
 
             VStack(spacing: 4) {
                 Text("Sasu")
