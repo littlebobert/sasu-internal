@@ -376,6 +376,12 @@ struct AnswerPanelView: View {
                         guard !text.isEmpty, shouldAutoScrollTranscript else { return }
                         scrollTranscriptToBottomAfterLayoutSettles(proxy, animated: false)
                     }
+                    // Furigana arrive (or are toggled) after the answer, making a source row
+                    // above taller. Keep the bottom pinned so the answer doesn't slide away.
+                    .onChange(of: furiganaLayoutKey) { _ in
+                        guard shouldAutoScrollTranscript else { return }
+                        scrollTranscriptToBottomAfterLayoutSettles(proxy, animated: false)
+                    }
                     .onChange(of: currentFindMatch) { match in
                         guard isFindVisible, let match else { return }
                         suspendTranscriptAutoScroll()
@@ -398,6 +404,13 @@ struct AnswerPanelView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
+    }
+
+    private var furiganaLayoutKey: FuriganaLayoutKey {
+        FuriganaLayoutKey(
+            showsFurigana: appModel.showsFurigana,
+            readings: appModel.transcriptMessages.map(\.sourceReadings)
+        )
     }
 
     private func scrollTranscriptToBottom(_ proxy: ScrollViewProxy) {
@@ -772,4 +785,9 @@ private struct TranscriptMessageView: View {
         guard message.role == .user, let sourceKind = message.sourceKind else { return nil }
         return (sourceKind.displayLabel, message.text)
     }
+}
+
+private struct FuriganaLayoutKey: Equatable {
+    let showsFurigana: Bool
+    let readings: [[RubyTextSegment]?]
 }
