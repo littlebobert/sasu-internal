@@ -677,7 +677,7 @@ private struct TranscriptMessageView: View {
 
     @ViewBuilder
     private func sourceTextView(_ text: String, label: String) -> some View {
-        if let sourceReadings = usefulSourceReadings {
+        if let sourceReadings = displayedSourceReadings(for: text) {
             VStack(alignment: .leading, spacing: 6) {
                 transcriptHighlightedText(
                     label,
@@ -688,10 +688,11 @@ private struct TranscriptMessageView: View {
                     .foregroundStyle(.secondary)
 
                 RubyTextView(
-                    segments: sourceReadings,
+                    segments: sourceReadings.segments,
                     fontSize: appModel.transcriptFontSize,
                     findQuery: findQuery,
-                    selectedFindOccurrence: selectedOccurrence(for: .messageText(message.id))
+                    selectedFindOccurrence: selectedOccurrence(for: .messageText(message.id)),
+                    hidesReadings: sourceReadings.arePlaceholders
                 )
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -723,6 +724,49 @@ private struct TranscriptMessageView: View {
         }
 
         return sourceReadings
+    }
+
+    /// The readings to lay the source out with. While the model's furigana are
+    /// still coming, invisible stand-ins over each kanji run hold their space
+    /// so the text doesn't jump when the real ones land.
+    private func displayedSourceReadings(for text: String) -> (segments: [RubyTextSegment], arePlaceholders: Bool)? {
+        if let usefulSourceReadings {
+            return (usefulSourceReadings, false)
+        }
+
+        guard appModel.showsFurigana,
+              appModel.messageIDsAwaitingReadings.contains(message.id) else {
+            return nil
+        }
+
+        return (Self.placeholderReadings(for: text), true)
+    }
+
+    private static func placeholderReadings(for text: String) -> [RubyTextSegment] {
+        var segments: [RubyTextSegment] = []
+        var run = ""
+        var runIsKanji = false
+
+        func flush() {
+            guard !run.isEmpty else { return }
+            // One kana per kanji: the stand-in never overhangs its base, so line
+            // breaks match the plain text.
+            let reading = runIsKanji ? String(repeating: "あ", count: run.count) : nil
+            segments.append(RubyTextSegment(text: run, reading: reading))
+            run = ""
+        }
+
+        for character in text {
+            let isKanji = JapaneseReadingService.containsKanji(String(character))
+            if isKanji != runIsKanji {
+                flush()
+                runIsKanji = isKanji
+            }
+            run.append(character)
+        }
+        flush()
+
+        return segments
     }
 
     private func selectedOccurrence(for target: TranscriptFindTarget) -> Int? {

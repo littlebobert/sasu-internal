@@ -57,6 +57,8 @@ final class AppModel: ObservableObject {
     @Published var usesUltrafast: Bool {
         didSet { defaults.set(usesUltrafast, forKey: Self.usesUltrafastKey) }
     }
+    /// Source messages whose furigana are still on their way from the model.
+    @Published private(set) var messageIDsAwaitingReadings: Set<UUID> = []
     @Published var showsFurigana: Bool {
         didSet { defaults.set(showsFurigana, forKey: Self.showsFuriganaKey) }
     }
@@ -223,7 +225,9 @@ final class AppModel: ObservableObject {
     private var translateAndReplaceHotkeyManager: HotkeyManager?
     private var lastScreenshot: ScreenshotPayload?
     private var currentRequestTask: Task<Void, Never>?
-    private var modelReadingTasks: [UUID: Task<Void, Never>] = [:]
+    private var modelReadingTasks: [UUID: (requestID: UUID, task: Task<Void, Never>)] = [:] {
+        didSet { messageIDsAwaitingReadings = Set(modelReadingTasks.keys) }
+    }
     private var isReceivingStreamedAnswer = false
     private lazy var streamingUpdateCoalescer = StreamingUpdateCoalescer<String> { [weak self] partialAnswer in
         self?.streamingResponseText = partialAnswer
@@ -1050,9 +1054,15 @@ final class AppModel: ObservableObject {
         let modelID = modelID
         let serviceTier = requestServiceTier
         let startedAt = Date()
-        modelReadingTasks[messageID]?.cancel()
-        modelReadingTasks[messageID] = Task { [weak self] in
-            defer { self?.modelReadingTasks[messageID] = nil }
+        modelReadingTasks[messageID]?.task.cancel()
+        let requestID = UUID()
+        let task = Task { [weak self] in
+            defer {
+                // A newer request for the same message may have replaced this one.
+                if self?.modelReadingTasks[messageID]?.requestID == requestID {
+                    self?.modelReadingTasks[messageID] = nil
+                }
+            }
             do {
                 let rawText: String
                 switch provider {
@@ -1102,6 +1112,7 @@ final class AppModel: ObservableObject {
                 )
             }
         }
+        modelReadingTasks[messageID] = (requestID, task)
     }
 
     private func replaceSourceReadings(messageID: UUID, with readings: [RubyTextSegment]) {
@@ -1123,7 +1134,7 @@ final class AppModel: ObservableObject {
     }
 
     private func cancelModelReadingTasks() {
-        modelReadingTasks.values.forEach { $0.cancel() }
+        modelReadingTasks.values.forEach { $0.task.cancel() }
         modelReadingTasks.removeAll()
     }
 

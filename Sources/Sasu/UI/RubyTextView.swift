@@ -6,6 +6,9 @@ struct RubyTextView: View {
     var fontSize: CGFloat = 13
     var findQuery = ""
     var selectedFindOccurrence: Int?
+    /// Lays the readings out without drawing them, to hold their space
+    /// while the real ones are on their way.
+    var hidesReadings = false
     @State private var height: CGFloat = 44
 
     var body: some View {
@@ -14,6 +17,7 @@ struct RubyTextView: View {
             fontSize: fontSize,
             findQuery: findQuery,
             selectedFindOccurrence: selectedFindOccurrence,
+            hidesReadings: hidesReadings,
             height: $height
         )
             .frame(height: height)
@@ -26,6 +30,7 @@ private struct RubyCoreTextView: NSViewRepresentable {
     let fontSize: CGFloat
     let findQuery: String
     let selectedFindOccurrence: Int?
+    let hidesReadings: Bool
     @Binding var height: CGFloat
 
     func makeCoordinator() -> Coordinator {
@@ -41,7 +46,11 @@ private struct RubyCoreTextView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: CoreTextRubyDrawingView, context: Context) {
-        let attributedString = Self.attributedString(for: segments, fontSize: fontSize)
+        let attributedString = Self.attributedString(
+            for: segments,
+            fontSize: fontSize,
+            hidesReadings: hidesReadings
+        )
         applyTranscriptFindHighlight(
             to: attributedString,
             query: findQuery,
@@ -56,7 +65,11 @@ private struct RubyCoreTextView: NSViewRepresentable {
         view.attributedString = attributedString
     }
 
-    private static func attributedString(for segments: [RubyTextSegment], fontSize: CGFloat) -> NSMutableAttributedString {
+    private static func attributedString(
+        for segments: [RubyTextSegment],
+        fontSize: CGFloat,
+        hidesReadings: Bool
+    ) -> NSMutableAttributedString {
         let result = NSMutableAttributedString()
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.lineSpacing = fontSize * (12.0 / 13.0)
@@ -69,7 +82,7 @@ private struct RubyCoreTextView: NSViewRepresentable {
 
         for segment in segments {
             var attributes = baseAttributes
-            if let annotation = rubyAnnotation(for: segment.reading) {
+            if let annotation = rubyAnnotation(for: segment.reading, hidden: hidesReadings) {
                 attributes[NSAttributedString.Key(rawValue: kCTRubyAnnotationAttributeName as String)] = annotation
             }
 
@@ -79,9 +92,25 @@ private struct RubyCoreTextView: NSViewRepresentable {
         return result
     }
 
-    private static func rubyAnnotation(for reading: String?) -> CTRubyAnnotation? {
+    private static let rubySizeFactor: CGFloat = 0.55
+
+    private static func rubyAnnotation(for reading: String?, hidden: Bool) -> CTRubyAnnotation? {
         guard let reading = reading?.trimmingCharacters(in: .whitespacesAndNewlines),
               !reading.isEmpty else { return nil }
+
+        if hidden {
+            let attributes: [CFString: Any] = [
+                kCTRubyAnnotationSizeFactorAttributeName: rubySizeFactor,
+                kCTForegroundColorAttributeName: NSColor.clear.cgColor
+            ]
+            return CTRubyAnnotationCreateWithAttributes(
+                .auto,
+                .auto,
+                .before,
+                reading as CFString,
+                attributes as CFDictionary
+            )
+        }
 
         let topText = reading as CFString
         var values: [Unmanaged<CFString>?] = [
@@ -92,7 +121,7 @@ private struct RubyCoreTextView: NSViewRepresentable {
         ]
 
         return values.withUnsafeMutableBufferPointer { buffer in
-            CTRubyAnnotationCreate(.auto, .auto, 0.55, buffer.baseAddress!)
+            CTRubyAnnotationCreate(.auto, .auto, rubySizeFactor, buffer.baseAddress!)
         }
     }
 
